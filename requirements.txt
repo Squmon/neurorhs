@@ -1,0 +1,5 @@
+jax
+numpy
+networkx
+pandas
+diffrax

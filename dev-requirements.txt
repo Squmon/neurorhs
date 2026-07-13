@@ -1,4 +1,9 @@
 pytest
 setuptools
 wheel
-# TODO: update the necessary requirements to develop this package
+jax
+numpy
+networkx
+pandas
+diffrax
+matplotlib
