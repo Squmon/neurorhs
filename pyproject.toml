@@ -15,7 +15,10 @@ optional-dependencies = {dev = {file = ["dev-requirements.txt"]}} # add packages
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools]
-exclude-package-data = { "*" = ["data/**", "./examples/**", "./tests/**"]}
+exclude-package-data = { "*" = ["./data/**", "./examples/**", "./tests/**"]}
+
+[tool.setuptools.packages.find]
+include = ["neurorhs*"]
 
 [project.scripts]
 # TODO: add your CLI entry points here
