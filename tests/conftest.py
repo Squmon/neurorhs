@@ -55,3 +55,7 @@ def directedness():
 @pytest.fixture
 def graph(graph_path):
     return nx.read_gml(graph_path)
+
+@pytest.fixture
+def context_path(project_root):
+    project_root / 'data' / 'generated' / "test_preprocess_output.npz"
