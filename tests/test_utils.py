@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import pytest
 
+
 def test_zeros():
     from neurorhs.utils import get_dynamic_zeros
     import jax
@@ -47,7 +48,8 @@ def test_zeros():
     def _equal_tree(x, y):
         # compare leaves using jnp.array_equal for arrays/scalars
         return jax.tree_util.tree_map(
-            lambda u, v: bool(jnp.array_equal(jnp.asarray(u), jnp.asarray(v))), x, y
+            lambda u, v: bool(jnp.array_equal(
+                jnp.asarray(u), jnp.asarray(v))), x, y
         )
 
     cmp = _equal_tree(y, target)

@@ -1,3 +1,9 @@
+"""JAX-based neuron model pipelines for channel and synapse updates.
+
+The module preserves the existing public API while exposing the internal
+state updates through small helper functions and descriptive docstrings.
+"""
+
 import jax
 from neurorhs.utils import *
 import jax.numpy as jnp
@@ -5,160 +11,155 @@ from jax import jit
 
 
 def save_exp(x, max_value: float = 100.0):
-    x = jnp.clip(x, -jnp.inf, max_value)
-    return jnp.exp(x)
+    """Clamp values before applying the exponential to avoid overflow."""
+    clipped_x = jnp.clip(x, -jnp.inf, max_value)
+    return jnp.exp(clipped_x)
 
 
 def m_gate(v):
+    """Return the activation and decay rates for the sodium activation gate."""
     alpha = 0.1 * _vtrap(-(v + 40), 10)
     beta = 4.0 * save_exp(-(v + 65) / 18)
     return alpha, beta
 
+
 def h_gate(v):
+    """Return the activation and decay rates for the sodium inactivation gate."""
     alpha = 0.07 * save_exp(-(v + 65) / 20)
     beta = 1.0 / (save_exp(-(v + 35) / 10) + 1)
     return alpha, beta
 
+
 def n_gate(v):
+    """Return the activation and decay rates for the potassium gate."""
     alpha = 0.01 * _vtrap(-(v + 55), 10)
     beta = 0.125 * save_exp(-(v + 65) / 80)
     return alpha, beta
 
 
 def _vtrap(x, y, epsilon=1e-12):
+    """Compute the voltage-dependent trap term used by the gating equations."""
     return x / (save_exp(x / y) - 1.0 + epsilon)
+
+
 def calculate_cable_scaling(edges, ro, x, y, z, r):
-    S = jnp.pi * r**2
-    dx = x.at[edges[:, 1]].get() - x.at[edges[:, 0]].get()
-    dy = y.at[edges[:, 1]].get() - y.at[edges[:, 0]].get()
-    dz = z.at[edges[:, 1]].get() - z.at[edges[:, 0]].get()    
-    L = (dx**2 + dy**2 + dz**2)**0.5
-    R = (ro*L/S.at[edges[:, 1]].get())
-    return R
+    """Compute per-edge axial resistance from cable geometry."""
+    cross_section_area = jnp.pi * r**2
+    source_nodes = edges[:, 0]
+    target_nodes = edges[:, 1]
 
-def get_cabble_pipeline(
-    edges
-):  # edges должны быть не ореинтированны и не повторятся
-    q = jnp.array(edges, jnp.int32)
-    static_sources = q[:, 0]
-    static_targets = q[:, 1]
-    def graph_evolution_fn_with_scaling(X: jnp.ndarray, dx_dt) -> jnp.ndarray:
-        x = X['morphology']['position']['x']
-        y = X['morphology']['position']['y']
-        z = X['morphology']['position']['z']
-        r = X['morphology']['r']
-        ro = X['morphology']['ro']
-        scaling = calculate_cable_scaling(edges, ro, x, y, z, r)
-        potential_diff = (
-            X['V'].at[static_targets].get() - X['V'].at[static_sources].get()
+    dx = x.at[target_nodes].get() - x.at[source_nodes].get()
+    dy = y.at[target_nodes].get() - y.at[source_nodes].get()
+    dz = z.at[target_nodes].get() - z.at[source_nodes].get()
+
+    cable_length = (dx**2 + dy**2 + dz**2)**0.5
+    return (ro * cable_length) / cross_section_area.at[target_nodes].get()
+
+
+def get_cabble_pipeline(edges):
+    """Build a JIT-compiled cable propagation pipeline for the provided edges."""
+    edge_array = jnp.array(edges, jnp.int32)
+    source_nodes = edge_array[:, 0]
+    target_nodes = edge_array[:, 1]
+
+    def graph_evolution_fn_with_scaling(state, dx_dt):
+        x = state['morphology']['position']['x']
+        y = state['morphology']['position']['y']
+        z = state['morphology']['position']['z']
+        radius = state['morphology']['r']
+        resistivity = state['morphology']['ro']
+
+        scaling = calculate_cable_scaling(edges, resistivity, x, y, z, radius)
+        potential_difference = (
+            state['V'].at[target_nodes].get(
+            ) - state['V'].at[source_nodes].get()
         )
-        dx_dt['V'] = dx_dt['V'].at[static_sources].add(potential_diff*scaling.at[static_sources].get())
-        dx_dt['V'] = dx_dt['V'].at[static_targets].add(-potential_diff*scaling.at[static_targets].get())
+
+        # Apply the same cable update symmetrically at both ends of each edge.
+        dx_dt['V'] = dx_dt['V'].at[source_nodes].add(
+            potential_difference * scaling.at[source_nodes].get()
+        )
+        dx_dt['V'] = dx_dt['V'].at[target_nodes].add(
+            -potential_difference * scaling.at[target_nodes].get()
+        )
         return dx_dt
-    graph_evolution_fn = graph_evolution_fn_with_scaling
 
-    return jax.jit(graph_evolution_fn)
-
+    return jax.jit(graph_evolution_fn_with_scaling)
 
 
 def get_Na_channel_pipeline():
-    """
-    Sodium (Na) channel pipeline.
-    Reads/writes states matching structure.txt:
-      state['V'], state['morphology']['C']
-      state['morphology']['Na']['m'], state['morphology']['Na']['h']
-      state['morphology']['Na']['gNa'], state['morphology']['Na']['eNa']
-    """
+    """Return the JIT-compiled sodium channel update pipeline."""
+
     @jax.jit
     def Na_pipeline(state, ds_dt):
-        V = state['V']
+        membrane_voltage = state['V']
         m = state['morphology']['Na']['m']
         h = state['morphology']['Na']['h']
-        gNa = state['morphology']['Na']['gNa']
-        eNa = state['morphology']['Na']['eNa']
-        C = state['morphology']['C']
+        sodium_conductance = state['morphology']['Na']['gNa']
+        sodium_reversal = state['morphology']['Na']['eNa']
+        membrane_capacitance = state['morphology']['C']
 
-        alpha_m, beta_m = m_gate(V)
+        alpha_m, beta_m = m_gate(membrane_voltage)
         dm = alpha_m * (1.0 - m) - beta_m * m
 
-        alpha_h, beta_h = h_gate(V)
+        alpha_h, beta_h = h_gate(membrane_voltage)
         dh = alpha_h * (1.0 - h) - beta_h * h
 
-        INa = gNa * h * (m**3) * (V - eNa)
+        sodium_current = sodium_conductance * h * \
+            (m**3) * (membrane_voltage - sodium_reversal)
 
-        # Update ds_dt
         ds_dt['morphology']['Na']['m'] = ds_dt['morphology']['Na']['m'] + dm
         ds_dt['morphology']['Na']['h'] = ds_dt['morphology']['Na']['h'] + dh
-        ds_dt['V'] = ds_dt['V'] - INa / C
+        ds_dt['V'] = ds_dt['V'] - sodium_current / membrane_capacitance
         return ds_dt
 
     return Na_pipeline
 
 
 def get_K_channel_pipeline():
-    """
-    Potassium (K) channel pipeline.
-    Reads/writes states matching structure.txt:
-      state['V'], state['morphology']['C']
-      state['morphology']['K']['n']
-      state['morphology']['K']['gK'], state['morphology']['K']['eK']
-    """
+    """Return the JIT-compiled potassium channel update pipeline."""
+
     @jax.jit
     def K_pipeline(state, ds_dt):
-        V = state['V']
+        membrane_voltage = state['V']
         n = state['morphology']['K']['n']
-        gK = state['morphology']['K']['gK']
-        eK = state['morphology']['K']['eK']
-        C = state['morphology']['C']
+        potassium_conductance = state['morphology']['K']['gK']
+        potassium_reversal = state['morphology']['K']['eK']
+        membrane_capacitance = state['morphology']['C']
 
-        alpha_n, beta_n = n_gate(V)
+        alpha_n, beta_n = n_gate(membrane_voltage)
         dn = alpha_n * (1.0 - n) - beta_n * n
 
-        IK = gK * (n**4) * (V - eK)
+        potassium_current = potassium_conductance * \
+            (n**4) * (membrane_voltage - potassium_reversal)
 
-        # Update ds_dt
         ds_dt['morphology']['K']['n'] = ds_dt['morphology']['K']['n'] + dn
-        ds_dt['V'] = ds_dt['V'] - IK / C
+        ds_dt['V'] = ds_dt['V'] - potassium_current / membrane_capacitance
         return ds_dt
 
     return K_pipeline
 
 
 def get_leak_channel_pipeline():
-    """
-    Leak channel pipeline.
-    Reads/writes states matching structure.txt:
-      state['V'], state['morphology']['C']
-      state['morphology']['leak']['gLeak'], state['morphology']['leak']['eLeak']
-    """
+    """Return the JIT-compiled leak-current update pipeline."""
+
     @jax.jit
     def leak_pipeline(state, ds_dt):
-        V = state['V']
-        gL = state['morphology']['leak']['gLeak']
-        eL = state['morphology']['leak']['eLeak']
-        C = state['morphology']['C']
+        membrane_voltage = state['V']
+        leak_conductance = state['morphology']['leak']['gLeak']
+        leak_reversal = state['morphology']['leak']['eLeak']
+        membrane_capacitance = state['morphology']['C']
 
-        Ileak = gL * (V - eL)
+        leak_current = leak_conductance * (membrane_voltage - leak_reversal)
 
-        # Update ds_dt
-        ds_dt['V'] = ds_dt['V'] - Ileak / C
+        ds_dt['V'] = ds_dt['V'] - leak_current / membrane_capacitance
         return ds_dt
 
     return leak_pipeline
 
 
 def get_stub_synapse_pipeline(pre_syn_edges, post_syn_edges):
-    """
-    Stub synapse pipeline using a sigmoid activation function.
-    
-    Args:
-        pre_syn_edges: Array of shape (2, N) where:
-            pre_syn_edges[0, :] is presynaptic cable segment indices
-            pre_syn_edges[1, :] is synapse indices
-        post_syn_edges: Array of shape (2, N) where:
-            post_syn_edges[0, :] is synapse indices
-            post_syn_edges[1, :] is postsynaptic cable segment indices
-    """
+    """Return a JIT-compiled stub synapse update pipeline."""
     pre_cable_idx = jnp.array(pre_syn_edges[0, :], dtype=jnp.int32)
     syn_pre_idx = jnp.array(pre_syn_edges[1, :], dtype=jnp.int32)
 
@@ -167,27 +168,27 @@ def get_stub_synapse_pipeline(pre_syn_edges, post_syn_edges):
 
     @jax.jit
     def synapse_pipeline(state, ds_dt):
-        V_cable = state['V']
-        V_syn = state['connectors']['stub']['V']
-        weight = state['connectors']['stub']['weight']
-        C = state['morphology']['C']
+        cable_voltage = state['V']
+        synapse_voltage = state['connectors']['stub']['V']
+        synapse_weights = state['connectors']['stub']['weight']
+        membrane_capacitance = state['morphology']['C']
 
-        # 1. Update synapse V to sigmoid of presynaptic V
-        V_pre = V_cable[pre_cable_idx]
-        target_V_syn = jax.nn.sigmoid(V_pre)
-        V_syn_active = V_syn[syn_pre_idx]
-        ds_dt['connectors']['stub']['V'] = ds_dt['connectors']['stub']['V'].at[syn_pre_idx].add(target_V_syn - V_syn_active)
+        # Update synapse voltage from the presynaptic cable using a sigmoid.
+        presynaptic_voltage = cable_voltage[pre_cable_idx]
+        target_synapse_voltage = jax.nn.sigmoid(presynaptic_voltage)
+        active_synapse_voltage = synapse_voltage[syn_pre_idx]
+        ds_dt['connectors']['stub']['V'] = ds_dt['connectors']['stub']['V'].at[syn_pre_idx].add(
+            target_synapse_voltage - active_synapse_voltage
+        )
 
-        # 2. Synchronize postsynaptic V with synapse V, scaled by weight
-        V_syn_mapped = V_syn[syn_post_idx]
-        V_post = V_cable[post_cable_idx]
-        weight_mapped = weight[syn_post_idx]
-        C_post = C[post_cable_idx]
+        # Synchronize postsynaptic voltage with the synapse state, scaled by weight.
+        mapped_synapse_voltage = synapse_voltage[syn_post_idx]
+        postsynaptic_voltage = cable_voltage[post_cable_idx]
+        mapped_weights = synapse_weights[syn_post_idx]
+        postsynaptic_capacitance = membrane_capacitance[post_cable_idx]
 
-        # Synchronization term: (V_syn - V_post) * weight
-        sync_term = (V_syn_mapped - V_post) * weight_mapped / C_post
-        
-        # Accumulate changes to V_cable
+        sync_term = (mapped_synapse_voltage - postsynaptic_voltage) * \
+            mapped_weights / postsynaptic_capacitance
         ds_dt['V'] = ds_dt['V'].at[post_cable_idx].add(sync_term)
         return ds_dt
 

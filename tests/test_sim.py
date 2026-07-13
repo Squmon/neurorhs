@@ -13,6 +13,7 @@ from neurorhs.neurosci import (
 )
 import diffrax
 
+
 class FooFromNpz(FooConfig):
     def __init__(self, npz_path):
         root_ctx = load_jax_context(npz_path)
@@ -115,6 +116,6 @@ def test_simulation_pipeline(
     img_path = generated_dir / "sim_result.png"
     foo = FooFromNpz(str(npz_path))
     sim = DefaultSim(foo)
-    sol = sim.solve(0, 200, num = 200)
+    sol = sim.solve(0, 200, num=200)
     plt.plot(sol.ts, sol.ys['V'])
     plt.savefig(str(img_path))
