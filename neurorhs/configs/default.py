@@ -1,6 +1,7 @@
 from neurorhs.neurosci import *
 import diffrax
-
+import lineax as lx
+import optimistix as optx
 
 class FooConfig:
     def __init__(self, context, default_arguments, is_dynamic):
