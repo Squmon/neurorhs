@@ -221,3 +221,4 @@ __marimo__/
 
 # project
 data/generated/*
+.vscode
