@@ -60,3 +60,21 @@ class SimulationConfig:
             max_steps = max_steps
         )
         return sol
+
+class DefaultSim(SimulationConfig):
+    def get_stepsize_controller(self):
+        return diffrax.PIDController(rtol=1e-5, atol=1e-5)
+
+    def get_solver(self):
+        # 1. Линейный решатель остается прежним (GMRES не строит плотную матрицу)
+        linear_solver = lx.GMRES(rtol=1e-5, atol=1e-5)
+
+        # 2. Нелинейный решатель теперь создается через optimistix
+        root_finder = optx.Newton(
+            rtol=1e-5,
+            atol=1e-5,
+            linear_solver=linear_solver
+        )
+
+        solver = diffrax.Sil3(root_finder=root_finder)
+        return solver
