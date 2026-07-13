@@ -19,41 +19,6 @@ from neurorhs.preprocessing.graph_to_arrays import (
 from neurorhs.preprocessing.preprocess import process_params
 
 
-@pytest.fixture
-def project_root():
-    return PROJECT_ROOT
-
-
-@pytest.fixture
-def graph_path(project_root):
-    return project_root / "data" / "gml" / "20n.gml"
-
-
-@pytest.fixture
-def metadata_path(project_root):
-    return project_root / "data" / "metadata" / "20n_nodes_metadata.csv"
-
-
-@pytest.fixture
-def generated_dir(project_root):
-    path = project_root / "data" / "generated"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-@pytest.fixture
-def type_groups():
-    return {"H": ["root", "soma", "branch", "slab", "end"], "S": ["connector"]}
-
-
-@pytest.fixture
-def directedness():
-    return {"H": {"H": False, "S": True}, "S": {"H": True, "S": True}}
-
-
-@pytest.fixture
-def graph(graph_path):
-    return nx.read_gml(graph_path)
 
 
 def _equal_tree(x, y):
