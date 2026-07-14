@@ -193,3 +193,57 @@ def get_stub_synapse_pipeline(pre_syn_edges, post_syn_edges):
         return ds_dt
 
     return synapse_pipeline
+
+
+@jax.jit
+def shift_operator(z: jnp.ndarray, tau_r, tau_d) -> jnp.ndarray:
+    # 1. Главная диагональ: -1/tau_r * z_i для всех элементов
+    # Это дает базовое экспоненциальное затухание во всех узлах
+    out = - (1.0 / tau_r) * z
+    
+    # 2. Субдиагональ (перенос вперед): 1/tau_d * z_{i-1} -> записывается в z_i
+    # Элемент z_0 переносится в z_1, z_1 в z_2 и т.д.
+    # Мы сдвигаем исходный вектор z вправо и масштабируем его
+    forward_flow = (1.0 / tau_d) * z[:-1]
+    out = out.at[1:].add(forward_flow)
+    
+    # 3. Супердиагональ (обратное влияние): -1/tau_d * z_{i+1} -> записывается в z_i
+    # Элемент z_2 переносится в z_1, z_3 в z_2 и т.д.
+    # Мы сдвигаем исходный вектор z влево и масштабируем его
+    backward_flow = - (1.0 / tau_d) * z[1:]
+    out = out.at[:-1].add(backward_flow)
+    
+    return out
+
+ 
+def get_dummy_delay_synapse_pipeline(pre_syn_edges, post_syn_edges): # edges_H_to_S, edges_S_to_H
+    pre_cable_idx = jnp.array(pre_syn_edges[0, :], dtype=jnp.int32)
+    syn_pre_idx = jnp.array(pre_syn_edges[1, :], dtype=jnp.int32)
+
+    syn_post_idx = jnp.array(post_syn_edges[0, :], dtype=jnp.int32)
+    post_cable_idx = jnp.array(post_syn_edges[1, :], dtype=jnp.int32)
+
+
+
+    @jax.jit
+    def synapse_pipeline(state, ds_dt):
+        cable_voltage = state['V']
+        # membrane_capacitance = state['morphology']['C']
+        tau_d = state['connectors']['dummy_delay']['tau_d']
+        tau_r = state['connectors']['dummy_delay']['tau_r']
+        weight = state['connectors']['dummy_delay']['weight']
+        slope = state['connectors']['dummy_delay']['slope']
+        bias = state['connectors']['dummy_delay']['bias']
+        z = state['connectors']['dummy_delay']['z']
+
+        presynaptic_voltage = cable_voltage[pre_cable_idx]
+        ds_dt['connectors']['dummy_delay']['z'] = ds_dt['connectors']['dummy_delay']['z'].at[syn_pre_idx, 0].add(presynaptic_voltage)
+
+        ds_dt['connectors']['dummy_delay']['z'] = ds_dt['connectors']['dummy_delay']['z'] + jax.vmap(shift_operator)(z, tau_r, tau_d)
+
+        F_out = weight * jax.nn.sigmoid(z[:, -1]*slope - bias)
+
+        ds_dt['V'] = ds_dt['V'].at[post_cable_idx].add(F_out[syn_post_idx])
+        return ds_dt
+
+    return synapse_pipeline
