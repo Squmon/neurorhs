@@ -112,7 +112,7 @@ class FooFromNpz(FooConfig):
 def test_simulation_pipeline(
     generated_dir
 ):
-    npz_path = generated_dir / "test_preprocess_output.npz"
+    npz_path = generated_dir / "test_preprocess_output.bin"
     img_path = generated_dir / "sim_result.png"
     foo = FooFromNpz(str(npz_path))
     sim = DefaultSim(foo)

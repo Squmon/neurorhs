@@ -26,7 +26,7 @@ def _equal_tree(x, y):
 
 
 def test_load_save_round_trip(graph, type_groups, directedness, generated_dir):
-    output_path = generated_dir / "test_graph_context.npz"
+    output_path = generated_dir / "test_graph_context.bin"
 
     ctx = process_graph_to_core_arrays(graph, type_groups, directedness)
     save_jax_arrays(ctx, str(output_path))
@@ -43,7 +43,7 @@ def test_preprocess_writes_generated_artifacts(
     directedness,
     generated_dir,
 ):
-    output_path = generated_dir / "test_preprocess_output.npz"
+    output_path = generated_dir / "test_preprocess_output.bin"
 
     process_params(
         str(graph_path),

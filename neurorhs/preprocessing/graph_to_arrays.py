@@ -1,5 +1,9 @@
 """Helpers for converting NetworkX graphs into compact JAX-friendly arrays."""
 
+import pickle
+
+import jax
+
 from neurorhs.utils import flatten_dict, unflatten_dict
 from copy import copy
 
@@ -209,70 +213,82 @@ def extract_node_features(
     return feature_arrays
 
 
-TYPE_MAPPING = {
-    'str': str, 'int': int, 'float': float, 'bool': lambda v: v == 'True'
-}
-
-
-def save_np_dict(x, path, separator='/', compress = True):
-    """Save a nested dictionary to an NPZ file while preserving the key types."""
-    flat_dict = flatten_dict(x, separator=separator)
-
-    types_meta = {}
-
-    def _build_meta(current_dict, parent_key=''):
-        for key, value in current_dict.items():
-            key_str = str(key)
-            path_key = f"{parent_key}{separator}{key_str}" if parent_key else key_str
-            if isinstance(value, dict):
-                _build_meta(value, path_key)
-            types_meta[path_key] = type(key).__name__
-
-    _build_meta(x)
-
-    meta_arr = np.array(list(types_meta.items()), dtype=object)
+def save_np_dict(x, path, compress=True, compression_level=3):
+    """
+    Сохраняет структуру PyTree (словарь) в один файл на максимальной скорости.
     
+    Args:
+        x: Словарь (или любой PyTree), который нужно сохранить.
+        path: Путь к файлу для сохранения.
+        compress: Если True, использует сжатие (Zstandard, если установлен, иначе zlib).
+        compression_level: Уровень сжатия (для zstd рекомендуемый 3, для zlib 1-9).
+    """
+    # 1. Мгновенно «сплющиваем» дерево с помощью JAX.
+    # JAX сам соберет структуру (treedef) и список листьев (leaves).
+    leaves, treedef = jax.tree_util.tree_flatten(x)
+    
+    # 2. Переводим JAX-массивы в стандартные CPU NumPy-массивы.
+    # Это гарантирует, что файл запишется быстро и его можно будет прочесть без привязки к GPU/TPU.
+    leaves_np = [np.asarray(leaf) if isinstance(leaf, (jax.Array, np.ndarray)) else leaf for leaf in leaves]
+    
+    # 3. Сериализуем структуру и массивы через Pickle Protocol 5 (самый быстрый протокол без лишнего копирования)
+    serialized = pickle.dumps((treedef, leaves_np), protocol=5)
+    
+    # 4. Опциональное сжатие
     if compress:
-        np.savez_compressed(path, __meta__=meta_arr, **flat_dict)
+        try:
+            import zstandard as zstd
+            cctx = zstd.ZstdCompressor(level=compression_level)
+            data = cctx.compress(serialized)
+        except ImportError:
+            # Если zstandard не установлен, откатываемся на стандартный zlib
+            import zlib
+            data = zlib.compress(serialized, level=compression_level)
     else:
-        np.savez(path, __meta__=meta_arr, **flat_dict)
+        data = serialized
+        
+    with open(path, 'wb') as f:
+        f.write(data)
 
 
-def load_np_dict(path, separator='/'):
-    """Load a nested dictionary from an NPZ file and restore the original key types."""
-    if not path.endswith('.npz') and not os.path.exists(path):
-        path += '.npz'
+def load_np_dict(path, to_jax=False):
+    """
+    Загружает структуру PyTree из файла, полностью восстанавливая оригинальные типы ключей.
+    
+    Args:
+        path: Путь к файлу.
+        to_jax: Если True, все загруженные массивы будут автоматически перенесены 
+                в память вашего JAX-девайса (GPU/TPU). Если False, останутся на CPU как NumPy.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Файл {path} не найден.")
 
-    with np.load(path, allow_pickle=True) as data:
-        data_keys = [k for k in data.files if k != '__meta__']
-        flat_dict = {k: data[k] for k in data_keys}
-
-        for k, v in flat_dict.items():
-            if v.ndim == 0:
-                flat_dict[k] = v.item()
-
-        if '__meta__' not in data.files:
-            return unflatten_dict(flat_dict, separator=separator)
-
-        meta_dict = dict(data['__meta__'])
-
-    nested_dict = unflatten_dict(flat_dict, separator=separator)
-
-    def _cast_keys_inplace(d, parent_key=''):
-        cased_dict = {}
-        for key_str, value in d.items():
-            current_path = f"{parent_key}{separator}{key_str}" if parent_key else key_str
-            type_name = meta_dict.get(current_path, 'str')
-            actual_key = TYPE_MAPPING.get(type_name, str)(key_str)
-
-            if isinstance(value, dict):
-                cased_dict[actual_key] = _cast_keys_inplace(
-                    value, current_path)
-            else:
-                cased_dict[actual_key] = value
-        return cased_dict
-
-    return _cast_keys_inplace(nested_dict)
+    with open(path, 'rb') as f:
+        data = f.read()
+        
+    # 1. Автоматическое определение сжатия по сигнатуре файла (magic bytes)
+    if data.startswith(b'\x28\xb5\x2f\xfd'): # Сигнатура Zstandard
+        import zstandard as zstd
+        dctx = zstd.ZstdDecompressor()
+        serialized = dctx.decompress(data)
+    elif data.startswith(b'\x78'): # Сигнатура zlib
+        import zlib
+        serialized = zlib.decompress(data)
+    else:
+        # Файл не сжат
+        serialized = data
+        
+    # 2. Десериализуем структуру JAX и листья
+    treedef, leaves_np = pickle.loads(serialized)
+    
+    # 3. При необходимости переносим массивы обратно в JAX (на дефолтный ускоритель)
+    if to_jax:
+        leaves = [jax.device_put(leaf) if isinstance(leaf, np.ndarray) else leaf for leaf in leaves_np]
+    else:
+        leaves = leaves_np
+        
+    # 4. Восстанавливаем оригинальное дерево (JAX сам соберет структуру и вернет исходные типы ключей)
+    return jax.tree_util.tree_unflatten(treedef, leaves)
 
 
 def save_jax_arrays(
@@ -305,7 +321,7 @@ def load_jax_context(load_path: str) -> GraphResults:
 
 
 if __name__ == '__main__':
-    SAVE_FILE = 'test_graph_arrays.npz'
+    SAVE_FILE = 'test_graph_arrays.bin'
     G = nx.DiGraph()
 
     type_groups = {'H': ['H_root', 'HS_hybrid'], 'S': ['S_conn', 'HS_hybrid']}
