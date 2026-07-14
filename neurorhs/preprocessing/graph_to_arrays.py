@@ -321,7 +321,7 @@ def load_jax_context(load_path: str) -> GraphResults:
 
 
 if __name__ == '__main__':
-    SAVE_FILE = 'test_graph_arrays.bin'
+    SAVE_FILE = 'test_graph_arrays.jconn'
     G = nx.DiGraph()
 
     type_groups = {'H': ['H_root', 'HS_hybrid'], 'S': ['S_conn', 'HS_hybrid']}

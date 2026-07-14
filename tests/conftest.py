@@ -54,4 +54,4 @@ def graph(graph_path):
 
 @pytest.fixture
 def context_path(project_root):
-    project_root / 'data' / 'generated' / "test_preprocess_output.bin"
+    project_root / 'data' / 'generated' / "test_preprocess_output.jconn"

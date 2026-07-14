@@ -216,7 +216,7 @@ class FooFromNpz_dds_syn(FooConfig):
 def test_basic_simulation_pipeline(
     generated_dir
 ):
-    npz_path = generated_dir / "test_preprocess_output.bin"
+    npz_path = generated_dir / "test_preprocess_output.jconn"
     img_path = generated_dir / "basic_sim_result.png"
     foo = FooFromNpz(str(npz_path))
     sim = DefaultSim(foo)
@@ -229,7 +229,7 @@ def test_basic_simulation_pipeline(
 def test_dds_simulation_pipeline(
     generated_dir
 ):
-    npz_path = generated_dir / "test_preprocess_output.bin"
+    npz_path = generated_dir / "test_preprocess_output.jconn"
     img_path = generated_dir / "dds_sim_result.png"
     foo = FooFromNpz_dds_syn(str(npz_path), 1)
     sim = DefaultSim(foo)

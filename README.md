@@ -51,7 +51,7 @@ process_params(
     "data/gml/20n.gml",
     {"H": ["root", "soma", "branch", "slab", "end"], "S": ["connector"]},
     {"H": {"H": False, "S": True}, "S": {"H": True, "S": True}},
-    "data/generated/test_preprocess_output.bin",
+    "data/generated/test_preprocess_output.jconn",
     "data/metadata/20n_nodes_metadata.csv",
 )
 ```
