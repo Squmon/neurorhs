@@ -214,7 +214,7 @@ TYPE_MAPPING = {
 }
 
 
-def save_np_dict(x, path, separator='/'):
+def save_np_dict(x, path, separator='/', compress = True):
     """Save a nested dictionary to an NPZ file while preserving the key types."""
     flat_dict = flatten_dict(x, separator=separator)
 
@@ -231,7 +231,11 @@ def save_np_dict(x, path, separator='/'):
     _build_meta(x)
 
     meta_arr = np.array(list(types_meta.items()), dtype=object)
-    np.savez(path, __meta__=meta_arr, **flat_dict)
+    
+    if compress:
+        np.savez_compressed(path, __meta__=meta_arr, **flat_dict)
+    else:
+        np.savez(path, __meta__=meta_arr, **flat_dict)
 
 
 def load_np_dict(path, separator='/'):
