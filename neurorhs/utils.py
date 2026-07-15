@@ -4,7 +4,15 @@ import jax
 import jax.numpy as jnp
 from jax.lax import scan, fori_loop
 from jax.scipy.sparse.linalg import cg
+import iree
 
+def iree_compile(foo, input_sample, **compiler_options):
+    lowered = jax.jit(foo).lower(*input_sample)
+    hlo_code = lowered.as_text('stablehlo')
+    return iree.compiler.compile_str(
+        hlo_code, 
+        **compiler_options
+    )
 
 def copy_dict_struct(d, value=None):
     """Create a nested structure matching ``d`` and populate each leaf with ``value``."""

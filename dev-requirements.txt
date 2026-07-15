@@ -7,3 +7,6 @@ networkx
 pandas
 diffrax
 matplotlib
+graphviz
+visu-hlo
+iree-compiler^

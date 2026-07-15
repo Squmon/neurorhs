@@ -223,3 +223,4 @@ __marimo__/
 data/generated/*
 .vscode
 trash.ipynb
+xla_html_dumps
