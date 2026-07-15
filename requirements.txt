@@ -3,4 +3,4 @@ numpy
 networkx
 pandas
 diffrax
-iree-compiler^
+iree-compiler
