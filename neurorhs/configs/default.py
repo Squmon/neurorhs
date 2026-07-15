@@ -27,7 +27,8 @@ class FooConfig:
 
     def get_combined(self):
         def foo(t, y, args):
-            return self.get_f_explicit(t, y, args) + self.get_f_implicit(t, y, args)
+            fe, fi = self.get_f_explicit(), self.get_f_implicit()
+            return jax.tree_util.tree_map(lambda x, y:x+y, fe(t, y, args), fi(t, y, args))
         return foo
 
 
