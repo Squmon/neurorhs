@@ -4,6 +4,8 @@ The module preserves the existing public API while exposing the internal
 state updates through small helper functions and descriptive docstrings.
 """
 
+from typing import Callable
+
 import jax
 from neurorhs.utils import *
 import jax.numpy as jnp
@@ -62,7 +64,7 @@ def get_cabble_pipeline(edges):
     source_nodes = edge_array[:, 0]
     target_nodes = edge_array[:, 1]
 
-    def graph_evolution_fn_with_scaling(state, dx_dt):
+    def graph_evolution_fn_with_scaling(state, ds_dt, t):
         x = state['morphology']['position']['x']
         y = state['morphology']['position']['y']
         z = state['morphology']['position']['z']
@@ -76,13 +78,13 @@ def get_cabble_pipeline(edges):
         )
 
         # Apply the same cable update symmetrically at both ends of each edge.
-        dx_dt['V'] = dx_dt['V'].at[source_nodes].add(
+        ds_dt['V'] = ds_dt['V'].at[source_nodes].add(
             potential_difference * scaling.at[source_nodes].get()
         )
-        dx_dt['V'] = dx_dt['V'].at[target_nodes].add(
+        ds_dt['V'] = ds_dt['V'].at[target_nodes].add(
             -potential_difference * scaling.at[target_nodes].get()
         )
-        return dx_dt
+        return ds_dt
 
     return jax.jit(graph_evolution_fn_with_scaling)
 
@@ -91,7 +93,7 @@ def get_Na_channel_pipeline():
     """Return the JIT-compiled sodium channel update pipeline."""
 
     @jax.jit
-    def Na_pipeline(state, ds_dt):
+    def Na_pipeline(state, ds_dt, t):
         membrane_voltage = state['V']
         m = state['morphology']['Na']['m']
         h = state['morphology']['Na']['h']
@@ -120,7 +122,7 @@ def get_K_channel_pipeline():
     """Return the JIT-compiled potassium channel update pipeline."""
 
     @jax.jit
-    def K_pipeline(state, ds_dt):
+    def K_pipeline(state, ds_dt, t):
         membrane_voltage = state['V']
         n = state['morphology']['K']['n']
         potassium_conductance = state['morphology']['K']['gK']
@@ -144,7 +146,7 @@ def get_leak_channel_pipeline():
     """Return the JIT-compiled leak-current update pipeline."""
 
     @jax.jit
-    def leak_pipeline(state, ds_dt):
+    def leak_pipeline(state, ds_dt, t):
         membrane_voltage = state['V']
         leak_conductance = state['morphology']['leak']['gLeak']
         leak_reversal = state['morphology']['leak']['eLeak']
@@ -158,6 +160,23 @@ def get_leak_channel_pipeline():
     return leak_pipeline
 
 
+def get_stim_pipeline(schedule:tuple[jnp.array, Callable]):
+
+    def filt(state, ds_dt, t):
+        for inds, c in schedule:
+            ds_dt['V'] = ds_dt['V'].at[inds].add(c(state, ds_dt, t))
+        return ds_dt
+
+    return filt
+
+def get_stim_pipeline_from_original_ids(mapping, schedule:tuple[tuple[str], Callable]):
+    schd = []
+    for inds, c in schedule:
+        mapped = jnp.array([mapping[ind] for ind in inds], dtype = jnp.int32)
+        schd.append((mapped, c))
+    return get_stim_pipeline(tuple(schd))
+
+
 def get_stub_synapse_pipeline(pre_syn_edges, post_syn_edges):
     """Return a JIT-compiled stub synapse update pipeline."""
     pre_cable_idx = jnp.array(pre_syn_edges[0, :], dtype=jnp.int32)
@@ -167,7 +186,7 @@ def get_stub_synapse_pipeline(pre_syn_edges, post_syn_edges):
     post_cable_idx = jnp.array(post_syn_edges[1, :], dtype=jnp.int32)
 
     @jax.jit
-    def synapse_pipeline(state, ds_dt):
+    def synapse_pipeline(state, ds_dt, t):
         cable_voltage = state['V']
         synapse_voltage = state['connectors']['stub']['V']
         synapse_weights = state['connectors']['stub']['weight']
@@ -226,7 +245,7 @@ def get_dummy_delay_synapse_pipeline(pre_syn_edges, post_syn_edges): # edges_H_t
 
 
     @jax.jit
-    def synapse_pipeline(state, ds_dt):
+    def synapse_pipeline(state, ds_dt, t):
         cable_voltage = state['V']
         # membrane_capacitance = state['morphology']['C']
         tau_d = state['connectors']['dummy_delay']['tau_d']

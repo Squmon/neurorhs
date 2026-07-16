@@ -12,31 +12,47 @@ class FooConfig:
         self.dynamic_part, self.static_part = get_dynamic_static_parts(
             default_arguments, is_dynamic)
 
-        def setup(y):
+    def construct_f_explicit(self):
+        return lambda s, ds_dt, t: ds_dt
+
+    def construct_f_implicit(self):
+        return lambda s, ds_dt, t: ds_dt
+
+    def get_diffrax_explicit_part(self):
+        fe = self.construct_f_explicit()
+
+        def f_exp(t, y, args):
             s = combine_parts(y, self.static_part, self.is_dynamic)
             ds_dt = jax.tree_util.tree_map(jnp.zeros_like, y)
-            return s, ds_dt
+            ds_dt = fe(s, ds_dt, t)
+            return ds_dt
 
-        self.setup = setup
+        return f_exp
 
-    def get_f_explicit(self):
-        raise NotImplementedError
+    def get_diffrax_implicit_part(self):
+        fe = self.construct_f_implicit()
 
-    def get_f_implicit(self):
-        raise NotImplementedError
+        def f_imp(t, y, args):
+            s = combine_parts(y, self.static_part, self.is_dynamic)
+            ds_dt = jax.tree_util.tree_map(jnp.zeros_like, y)
+            ds_dt = fe(s, ds_dt, t)
+            return ds_dt
+
+        return f_imp
 
     def get_combined(self):
         def foo(t, y, args):
             fe, fi = self.get_f_explicit(), self.get_f_implicit()
-            return jax.tree_util.tree_map(lambda x, y:x+y, fe(t, y, args), fi(t, y, args))
+            return jax.tree_util.tree_map(lambda x, y: x+y, fe(t, y, args), fi(t, y, args))
         return foo
 
 
 class SimulationConfig:
     def __init__(self, foo_config: FooConfig):
         self.foo_config: FooConfig = foo_config
-        self.f_explicit = foo_config.get_f_explicit()
-        self.f_implicit = foo_config.get_f_implicit()
+
+        self.f_explicit = foo_config.get_diffrax_explicit_part()
+        self.f_implicit = foo_config.get_diffrax_implicit_part()
 
         self.term_explicit = diffrax.ODETerm(self.f_explicit)
         self.term_implicit = diffrax.ODETerm(self.f_implicit)
@@ -48,7 +64,7 @@ class SimulationConfig:
     def get_stepsize_controller(self):
         raise NotImplementedError
 
-    def solve(self, t0, t1, dt0=0.01, y0=None, num=100, max_steps=100_000, save_at = None):
+    def solve(self, t0, t1, dt0=0.01, y0=None, num=100, max_steps=100_000, save_at=None):
         if save_at is None:
             save_at = diffrax.SaveAt(ts=jnp.linspace(t0, t1, num))
         if y0 is None:

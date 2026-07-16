@@ -4,20 +4,14 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 
-from neurorhs.neurosci import (
-    get_Na_channel_pipeline,
-    get_K_channel_pipeline,
-    get_leak_channel_pipeline,
-    get_stub_synapse_pipeline,
-    get_cabble_pipeline,
-)
+from neurorhs.neurosci import *
 import diffrax
 
 
 class FooFromNpz(FooConfig):
-    def __init__(self, npz_path, default_r = 10.0):
-        root_ctx = load_context(npz_path)
+    def __init__(self, root_ctx, default_r = 10.0, stimulus = None):
         ctx = root_ctx['root']
+        self.stimulus = stimulus
 
         num_H = ctx['num_nodes']['H']
         num_S = ctx['num_nodes']['S']
@@ -80,18 +74,16 @@ class FooFromNpz(FooConfig):
         is_dynamic['connectors']['stub']['weight'] = False
         super().__init__(ctx, default_arguments, is_dynamic)
 
-    def get_f_implicit(self):
+    def construct_f_implicit(self):
         cable_m = self.ctx['edges_H_to_H']
         cabble_pipe = get_cabble_pipeline(cable_m)
 
-        def f_implicit(t, y, args):
-            s, ds_dt = self.setup(y)
-            ds_dt = jax.tree_util.tree_map(jnp.zeros_like, y)
-            ds_dt = cabble_pipe(s, ds_dt)
+        def f_implicit(s, ds_dt, t):
+            ds_dt = cabble_pipe(s, ds_dt, t)
             return ds_dt
         return f_implicit
 
-    def get_f_explicit(self):
+    def construct_f_explicit(self):
         pre_syn = self.ctx['edges_H_to_S']
         post_syn = self.ctx['edges_S_to_H']
         na_pipe = get_Na_channel_pipeline()
@@ -100,20 +92,21 @@ class FooFromNpz(FooConfig):
 
         syn_pipe = get_stub_synapse_pipeline(pre_syn, post_syn)
 
-        def f_explicit(t, y, args):
-            s, ds_dt = self.setup(y)
-            ds_dt = na_pipe(s, ds_dt)
-            ds_dt = k_pipe(s, ds_dt)
-            ds_dt = leak_pipe(s, ds_dt)
-            ds_dt = syn_pipe(s, ds_dt)
+        def f_explicit(s, ds_dt, t):
+            ds_dt = na_pipe(s, ds_dt, t)
+            ds_dt = k_pipe(s, ds_dt, t)
+            ds_dt = leak_pipe(s, ds_dt, t)
+            ds_dt = syn_pipe(s, ds_dt, t)
+            if self.stimulus is not None:
+                ds_dt = self.stimulus(s, ds_dt, t)
             return ds_dt
         return f_explicit
 
 
 class FooFromNpz_dds_syn(FooConfig):
-    def __init__(self, npz_path, N_ddp = 5, default_r = 10.0):
-        root_ctx = load_context(npz_path)
+    def __init__(self, root_ctx, N_ddp = 5, default_r = 10.0, stimulus = None):
         ctx = root_ctx['root']
+        self.stimulus = stimulus
 
         num_H = ctx['num_nodes']['H']
         num_S = ctx['num_nodes']['S']
@@ -185,34 +178,40 @@ class FooFromNpz_dds_syn(FooConfig):
 
         super().__init__(ctx, default_arguments, is_dynamic)
 
-    def get_f_implicit(self):
+    
+
+    def construct_f_implicit(self):
         cable_m = self.ctx['edges_H_to_H']
         cabble_pipe = get_cabble_pipeline(cable_m)
+        sp = super().construct_f_implicit()
 
-        def f_implicit(t, y, args):
-            s, ds_dt = self.setup(y)
-            ds_dt = jax.tree_util.tree_map(jnp.zeros_like, y)
-            ds_dt = cabble_pipe(s, ds_dt)
+        def f_implicit_generated(s, ds_dt, t):
+            ds_dt = sp(s, ds_dt, t)
+            ds_dt = cabble_pipe(s, ds_dt, t)
             return ds_dt
-        return f_implicit
+        return f_implicit_generated
 
-    def get_f_explicit(self):
+    
+    def construct_f_explicit(self):
         pre_syn = self.ctx['edges_H_to_S']
         post_syn = self.ctx['edges_S_to_H']
         na_pipe = get_Na_channel_pipeline()
         k_pipe = get_K_channel_pipeline()
         leak_pipe = get_leak_channel_pipeline()
+        sp = super().construct_f_explicit()
 
         syn_pipe = get_dummy_delay_synapse_pipeline(pre_syn, post_syn)
 
-        def f_explicit(t, y, args):
-            s, ds_dt = self.setup(y)
-            ds_dt = na_pipe(s, ds_dt)
-            ds_dt = k_pipe(s, ds_dt)
-            ds_dt = leak_pipe(s, ds_dt)
-            ds_dt = syn_pipe(s, ds_dt)
+        def f_explicit_generated(s, ds_dt, t):
+            ds_dt = sp(s, ds_dt, t)
+            ds_dt = na_pipe(s, ds_dt, t)
+            ds_dt = k_pipe(s, ds_dt, t)
+            ds_dt = leak_pipe(s, ds_dt, t)
+            ds_dt = syn_pipe(s, ds_dt, t)
+            if self.stimulus is not None:
+                ds_dt = self.stimulus(s, ds_dt, t)
             return ds_dt
-        return f_explicit
+        return f_explicit_generated
 
 
 def test_basic_simulation_pipeline(
@@ -220,7 +219,8 @@ def test_basic_simulation_pipeline(
 ):
     npz_path = generated_dir / "test_preprocess_output.jconn"
     img_path = generated_dir / "basic_sim_result.png"
-    foo = FooFromNpz(str(npz_path))
+    root_ctx = load_context(str(npz_path))
+    foo = FooFromNpz(root_ctx)
     sim = DefaultSim(foo)
     sol = sim.solve(0, 200, num=200)
     plt.plot(sol.ts, sol.ys['V'])
@@ -233,8 +233,35 @@ def test_dds_simulation_pipeline(
 ):
     npz_path = generated_dir / "test_preprocess_output.jconn"
     img_path = generated_dir / "dds_sim_result.png"
-    foo = FooFromNpz_dds_syn(str(npz_path), 1)
+    root_ctx = load_context(str(npz_path))
+    foo = FooFromNpz_dds_syn(root_ctx, 1)
     sim = DefaultSim(foo)
     sol = sim.solve(0, 200, num=200)
     plt.plot(sol.ts, sol.ys['V'])
     plt.savefig(str(img_path))
+
+
+def test_basic_simulation_pipeline_with_stimulus(
+    generated_dir
+):
+    npz_path = generated_dir / "test_preprocess_output.jconn"
+    img_path = generated_dir / "basic_sim_result_stimula.png"
+    img_path1 = generated_dir / "basic_sim_result_stimula_only_stimulated.png"
+    root_ctx = load_context(str(npz_path))
+
+    iclamp = lambda state, ds_dt, t: 70*(t > 20)
+    mapping = root_ctx['root']['mapping']['H']
+    stimula = get_stim_pipeline_from_original_ids(mapping, 
+                                           ((['25019976'], iclamp), ))
+    
+    foo = FooFromNpz(root_ctx, stimulus = stimula)
+
+    sim = DefaultSim(foo)
+    sol = sim.solve(0, 100, num=200)
+    plt.plot(sol.ts, sol.ys['V'])
+    plt.savefig(str(img_path))
+    plt.clf()
+
+    plt.plot(sol.ts, sol.ys['V'].T[mapping['25019976']])
+    plt.savefig(str(img_path1))
+
