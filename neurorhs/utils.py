@@ -94,3 +94,15 @@ def combine_parts(dynamic_part, static_part, is_dynamic):
             output[key] = static_items[key]
 
     return unflatten_dict(output)
+
+
+class Mapper:
+    def __init__(self, array, mapping):
+        self.__array = array
+        self.mapping = mapping
+
+    def __getitem__(self, key):
+        return self.__array[self.mapping[key]]
+
+def apply_mappers(tree, groups):
+    return jax.tree.map(Mapper, tree, groups)

@@ -164,7 +164,7 @@ def get_stim_pipeline(schedule:tuple[jnp.array, Callable]):
 
     def filt(state, ds_dt, t):
         for inds, c in schedule:
-            C = state['morphology']['C'].at[inds]
+            C = state['morphology']['C'].at[inds].get()
             ds_dt['V'] = ds_dt['V'].at[inds].add(c(state, ds_dt, t)/C)
         return ds_dt
 

@@ -1,3 +1,4 @@
+import neurorhs.io as io
 from neurorhs.neurosci import *
 import diffrax
 import lineax as lx
@@ -5,12 +6,17 @@ import optimistix as optx
 
 
 class FooConfig:
-    def __init__(self, context, default_arguments, is_dynamic):
+    def __init__(self, context, default_arguments, is_dynamic, groups):
         self.ctx = context
         self.default_arguments = default_arguments
         self.is_dynamic = is_dynamic
-        self.dynamic_part, self.static_part = get_dynamic_static_parts(
-            default_arguments, is_dynamic)
+        self.groups = groups
+        
+
+    def get_dynamic_static_parts(self, state = None):
+        if state is None:
+            state = self.default_arguments
+        return get_dynamic_static_parts(state, self.is_dynamic)
 
     def construct_f_explicit(self):
         return lambda s, ds_dt, t: ds_dt
@@ -20,9 +26,10 @@ class FooConfig:
 
     def get_diffrax_explicit_part(self):
         fe = self.construct_f_explicit()
+        _, s_part = self.get_dynamic_static_parts()
 
         def f_exp(t, y, args):
-            s = combine_parts(y, self.static_part, self.is_dynamic)
+            s = combine_parts(y, s_part, self.is_dynamic)
             ds_dt = jax.tree_util.tree_map(jnp.zeros_like, y)
             ds_dt = fe(s, ds_dt, t)
             return ds_dt
@@ -31,9 +38,10 @@ class FooConfig:
 
     def get_diffrax_implicit_part(self):
         fe = self.construct_f_implicit()
+        _, s_part = self.get_dynamic_static_parts()
 
         def f_imp(t, y, args):
-            s = combine_parts(y, self.static_part, self.is_dynamic)
+            s = combine_parts(y, s_part, self.is_dynamic)
             ds_dt = jax.tree_util.tree_map(jnp.zeros_like, y)
             ds_dt = fe(s, ds_dt, t)
             return ds_dt
@@ -68,7 +76,7 @@ class SimulationConfig:
         if save_at is None:
             save_at = diffrax.SaveAt(ts=jnp.linspace(t0, t1, num))
         if y0 is None:
-            y0 = self.foo_config.dynamic_part
+            y0, _ = self.foo_config.get_dynamic_static_parts()
 
         sol = diffrax.diffeqsolve(
             self.terms,
@@ -83,6 +91,24 @@ class SimulationConfig:
         )
         return sol
 
+
+
+    def save_results(self, sol, path, **kwargs):
+        _, static_part = self.foo_config.get_dynamic_static_parts()
+        io.save_pytree({
+            "ys":sol.ys,
+            "ts":sol.ts,
+            'static_part':static_part,
+            "is_dynamic":self.foo_config.is_dynamic,
+            "mapping":self.foo_config.ctx['mapping']
+        }, path, **kwargs)
+
+    def load_results(self, path, to_jax = False):
+        result = io.load_pytree(path, to_jax)
+        return result
+
+    def load_results_with_mapping():
+        pass
 
 class DefaultSim(SimulationConfig):
     def get_stepsize_controller(self):
