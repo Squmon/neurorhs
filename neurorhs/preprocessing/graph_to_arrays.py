@@ -1,16 +1,7 @@
 """Helpers for converting NetworkX graphs into compact JAX-friendly arrays."""
-
-import pickle
-
-import jax
-
-from neurorhs.utils import flatten_dict, unflatten_dict
-from copy import copy
-
 import networkx as nx
 import numpy as np
 from typing import Dict, List, Tuple, Any, Union, Set
-import os
 import itertools
 
 # --- Типы данных ---
