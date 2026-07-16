@@ -1,8 +1,8 @@
 from neurorhs.preprocessing.preprocess import process_params
 from neurorhs.preprocessing.graph_to_arrays import (
-    load_jax_context,
+    load_context,
     process_graph_to_core_arrays,
-    save_jax_arrays,
+    save_context,
 )
 import pytest
 import numpy as np
@@ -29,9 +29,9 @@ def test_load_save_round_trip(graph, type_groups, directedness, generated_dir):
     output_path = generated_dir / "test_graph_context.jconn"
 
     ctx = process_graph_to_core_arrays(graph, type_groups, directedness)
-    save_jax_arrays(ctx, str(output_path))
+    save_context(ctx, str(output_path))
 
-    loaded = load_jax_context(str(output_path))
+    loaded = load_context(str(output_path))
     assert output_path.exists()
     assert _equal_tree(ctx, loaded["root"])
 
@@ -53,7 +53,7 @@ def test_preprocess_writes_generated_artifacts(
         str(metadata_path),
     )
 
-    loaded = load_jax_context(str(output_path))
+    loaded = load_context(str(output_path))
     assert output_path.exists()
     assert "root" in loaded
     assert "additional_data" in loaded

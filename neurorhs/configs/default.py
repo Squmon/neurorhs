@@ -48,7 +48,9 @@ class SimulationConfig:
     def get_stepsize_controller(self):
         raise NotImplementedError
 
-    def solve(self, t0, t1, dt0=0.01, y0=None, num=100, max_steps=100_000):
+    def solve(self, t0, t1, dt0=0.01, y0=None, num=100, max_steps=100_000, save_at = None):
+        if save_at is None:
+            save_at = diffrax.SaveAt(ts=jnp.linspace(t0, t1, num))
         if y0 is None:
             y0 = self.foo_config.dynamic_part
 
@@ -60,7 +62,7 @@ class SimulationConfig:
             dt0=dt0,
             y0=y0,
             stepsize_controller=self.get_stepsize_controller(),
-            saveat=diffrax.SaveAt(ts=jnp.linspace(t0, t1, num)),
+            saveat=save_at,
             max_steps=max_steps
         )
         return sol

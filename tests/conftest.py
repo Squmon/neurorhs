@@ -1,8 +1,8 @@
 from neurorhs.preprocessing.preprocess import process_params
 from neurorhs.preprocessing.graph_to_arrays import (
-    load_jax_context,
+    load_context,
     process_graph_to_core_arrays,
-    save_jax_arrays,
+    save_context,
 )
 import pytest
 import numpy as np

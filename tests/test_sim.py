@@ -1,5 +1,5 @@
 from neurorhs.configs.default import *
-from neurorhs.preprocessing.graph_to_arrays import process_graph_to_core_arrays, load_jax_context
+from neurorhs.preprocessing.graph_to_arrays import process_graph_to_core_arrays, load_context
 import networkx as nx
 import matplotlib.pyplot as plt
 
@@ -16,7 +16,7 @@ import diffrax
 
 class FooFromNpz(FooConfig):
     def __init__(self, npz_path):
-        root_ctx = load_jax_context(npz_path)
+        root_ctx = load_context(npz_path)
         ctx = root_ctx['root']
 
         num_H = ctx['num_nodes']['H']
@@ -111,7 +111,7 @@ class FooFromNpz(FooConfig):
 
 class FooFromNpz_dds_syn(FooConfig):
     def __init__(self, npz_path, N_ddp = 5):
-        root_ctx = load_jax_context(npz_path)
+        root_ctx = load_context(npz_path)
         ctx = root_ctx['root']
 
         num_H = ctx['num_nodes']['H']

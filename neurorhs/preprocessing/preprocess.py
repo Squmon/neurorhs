@@ -30,7 +30,7 @@ def process_params(path_to_full, type_groups, directedness, path_to_save, path_t
                   for soma_id in all_somas]
     soma_pairs = np.array(soma_pairs)
 
-    ga.save_jax_arrays(
+    ga.save_context(
         processed_graph,
         path_to_save,
         {
