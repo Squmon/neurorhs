@@ -15,7 +15,7 @@ import diffrax
 
 
 class FooFromNpz(FooConfig):
-    def __init__(self, npz_path):
+    def __init__(self, npz_path, default_r = 10.0):
         root_ctx = load_context(npz_path)
         ctx = root_ctx['root']
 
@@ -26,6 +26,7 @@ class FooFromNpz(FooConfig):
         y = root_ctx['additional_data']['y']
         z = root_ctx['additional_data']['z']
         r = root_ctx['additional_data']['r']
+        r = jnp.nan_to_num(r, nan = default_r)
 
         default_arguments = {
             'V': jnp.ones((num_H,), dtype=jnp.float32) * -65.0,
@@ -110,7 +111,7 @@ class FooFromNpz(FooConfig):
 
 
 class FooFromNpz_dds_syn(FooConfig):
-    def __init__(self, npz_path, N_ddp = 5):
+    def __init__(self, npz_path, N_ddp = 5, default_r = 10.0):
         root_ctx = load_context(npz_path)
         ctx = root_ctx['root']
 
@@ -121,6 +122,7 @@ class FooFromNpz_dds_syn(FooConfig):
         y = root_ctx['additional_data']['y']
         z = root_ctx['additional_data']['z']
         r = root_ctx['additional_data']['r']
+        r = jnp.nan_to_num(r, nan = default_r)
 
         default_arguments = {
             'V': jnp.ones((num_H,), dtype=jnp.float32) * -65.0,
