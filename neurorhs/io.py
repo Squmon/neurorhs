@@ -87,7 +87,7 @@ def load_pytree(path, to_jax=False):
 
     # 4. Восстанавливаем оригинальное дерево (JAX сам соберет структуру и вернет исходные типы ключей)
     return jax.tree_util.tree_unflatten(treedef, leaves)
-
+    
 
 def save_context(
     context: GraphResults,

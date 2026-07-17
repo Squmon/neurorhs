@@ -5,14 +5,17 @@ import jax.numpy as jnp
 from jax.lax import scan, fori_loop
 from jax.scipy.sparse.linalg import cg
 import iree
+from jax.tree_util import register_pytree_node_class
+
 
 def iree_compile(foo, input_sample, **compiler_options):
     lowered = jax.jit(foo).lower(*input_sample)
     hlo_code = lowered.as_text('stablehlo')
     return iree.compiler.compile_str(
-        hlo_code, 
+        hlo_code,
         **compiler_options
     )
+
 
 def copy_dict_struct(d, value=None):
     """Create a nested structure matching ``d`` and populate each leaf with ``value``."""
@@ -96,13 +99,31 @@ def combine_parts(dynamic_part, static_part, is_dynamic):
     return unflatten_dict(output)
 
 
+@register_pytree_node_class
 class Mapper:
-    def __init__(self, array, mapping):
-        self.__array = array
+    def __init__(self, array, mapping: dict):
+        self._array = array
         self.mapping = mapping
 
     def __getitem__(self, key):
-        return self.__array[self.mapping[key]]
+        if isinstance(key, tuple):
+            return self._array[tuple(self._map_key(k) for k in key)]
+        return self._array[self._map_key(key)]
 
-def apply_mappers(tree, groups):
-    return jax.tree.map(Mapper, tree, groups)
+    def _map_key(self, k):
+        if k is Ellipsis or isinstance(k, (slice, int, jnp.ndarray)):
+            return k
+        return self.mapping[k]
+
+    def tree_flatten(self):
+        children = (self._array,)
+        aux_data = self.mapping
+        return (children, aux_data)
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(children[0], aux_data)
+
+
+def apply_mappers(tree, groups, mapping):
+    return jax.tree.map(lambda t, g: Mapper(t, mapping[g]), tree, groups)

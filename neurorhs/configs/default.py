@@ -11,7 +11,6 @@ class FooConfig:
         self.default_arguments = default_arguments
         self.is_dynamic = is_dynamic
         self.groups = groups
-        
 
     def get_dynamic_static_parts(self, state = None):
         if state is None:
@@ -107,8 +106,8 @@ class SimulationConfig:
         result = io.load_pytree(path, to_jax)
         return result
 
-    def load_results_with_mapping():
-        pass
+    def load_results_with_mapping(path, to_jax = False):
+        raise NotImplementedError
 
 class DefaultSim(SimulationConfig):
     def get_stepsize_controller(self):

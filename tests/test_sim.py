@@ -2,6 +2,7 @@ from neurorhs.configs.default import *
 from neurorhs.preprocessing.graph_to_arrays import process_graph_to_core_arrays, load_context
 import networkx as nx
 import matplotlib.pyplot as plt
+from neurorhs.utils import apply_mappers, Mapper
 
 
 from neurorhs.neurosci import *
@@ -225,8 +226,12 @@ def test_basic_simulation_pipeline_with_stimulus(
 
     iclamp = lambda state, ds_dt, t: 70*(t > 20)
     mapping = root_ctx['root']['mapping']['H']
-    stimula = get_stim_pipeline_from_original_ids(mapping, 
-                                           ((['25019976'], iclamp), ))
+
+    neurites_to_stimul = [
+        '10675427',
+        '11281421']
+
+    stimula = get_stim_pipeline_from_original_ids(mapping, ((neurites_to_stimul, iclamp),))
     
     foo = StubSynFoo_static_params(root_ctx, stimulus = stimula)
 
@@ -236,6 +241,10 @@ def test_basic_simulation_pipeline_with_stimulus(
     plt.savefig(str(img_path))
     plt.clf()
 
-    plt.plot(sol.ts, sol.ys['V'].T[mapping['25019976']])
-    plt.savefig(str(img_path1))
+    mapped = apply_mappers(sol.ys, foo.get_dynamic_static_parts(foo.groups)[0], foo.ctx['mapping'])
 
+
+    for i in neurites_to_stimul:
+        plt.plot(sol.ts, mapped['V'][..., i], label = i)
+    plt.legend()
+    plt.savefig(str(img_path1))
