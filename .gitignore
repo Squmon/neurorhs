@@ -222,5 +222,5 @@ __marimo__/
 # project
 data/generated/*
 .vscode
-trash.ipynb
+trash*.ipynb
 xla_html_dumps
