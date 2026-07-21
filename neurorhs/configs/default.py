@@ -12,7 +12,7 @@ class FooConfig:
         self.is_dynamic = is_dynamic
         self.groups = groups
 
-    def get_dynamic_static_parts(self, state = None):
+    def get_dynamic_static_parts(self, state=None):
         if state is None:
             state = self.default_arguments
         return get_dynamic_static_parts(state, self.is_dynamic)
@@ -90,24 +90,23 @@ class SimulationConfig:
         )
         return sol
 
-
-
     def save_results(self, sol, path, **kwargs):
         _, static_part = self.foo_config.get_dynamic_static_parts()
         io.save_pytree({
-            "ys":sol.ys,
-            "ts":sol.ts,
-            'static_part':static_part,
-            "is_dynamic":self.foo_config.is_dynamic,
-            "mapping":self.foo_config.ctx['mapping']
+            "ys": sol.ys,
+            "ts": sol.ts,
+            'static_part': static_part,
+            "is_dynamic": self.foo_config.is_dynamic,
+            "mapping": self.foo_config.ctx['mapping']
         }, path, **kwargs)
 
-    def load_results(self, path, to_jax = False):
+    def load_results(self, path, to_jax=False):
         result = io.load_pytree(path, to_jax)
         return result
 
-    def load_results_with_mapping(path, to_jax = False):
+    def load_results_with_mapping(path, to_jax=False):
         raise NotImplementedError
+
 
 class DefaultSim(SimulationConfig):
     def get_stepsize_controller(self):

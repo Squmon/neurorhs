@@ -160,7 +160,7 @@ def get_leak_channel_pipeline():
     return leak_pipeline
 
 
-def get_stim_pipeline(schedule:tuple[jnp.array, Callable]):
+def get_stim_pipeline(schedule: tuple[jnp.array, Callable]):
 
     def filt(state, ds_dt, t):
         for inds, c in schedule:
@@ -170,10 +170,11 @@ def get_stim_pipeline(schedule:tuple[jnp.array, Callable]):
 
     return filt
 
-def get_stim_pipeline_from_original_ids(mapping, schedule:tuple[tuple[str], Callable]):
+
+def get_stim_pipeline_from_original_ids(mapping, schedule: tuple[tuple[str], Callable]):
     schd = []
     for inds, c in schedule:
-        mapped = jnp.array([mapping[ind] for ind in inds], dtype = jnp.int32)
+        mapped = jnp.array([mapping[ind] for ind in inds], dtype=jnp.int32)
         schd.append((mapped, c))
     return get_stim_pipeline(tuple(schd))
 
@@ -220,30 +221,29 @@ def shift_operator(z: jnp.ndarray, tau_r, tau_d) -> jnp.ndarray:
     # 1. Главная диагональ: -1/tau_r * z_i для всех элементов
     # Это дает базовое экспоненциальное затухание во всех узлах
     out = - (1.0 / tau_r) * z
-    
+
     # 2. Субдиагональ (перенос вперед): 1/tau_d * z_{i-1} -> записывается в z_i
     # Элемент z_0 переносится в z_1, z_1 в z_2 и т.д.
     # Мы сдвигаем исходный вектор z вправо и масштабируем его
     forward_flow = (1.0 / tau_d) * z[:-1]
     out = out.at[1:].add(forward_flow)
-    
+
     # 3. Супердиагональ (обратное влияние): -1/tau_d * z_{i+1} -> записывается в z_i
     # Элемент z_2 переносится в z_1, z_3 в z_2 и т.д.
     # Мы сдвигаем исходный вектор z влево и масштабируем его
     backward_flow = - (1.0 / tau_d) * z[1:]
     out = out.at[:-1].add(backward_flow)
-    
+
     return out
 
- 
-def get_dummy_delay_synapse_pipeline(pre_syn_edges, post_syn_edges): # edges_H_to_S, edges_S_to_H
+
+# edges_H_to_S, edges_S_to_H
+def get_dummy_delay_synapse_pipeline(pre_syn_edges, post_syn_edges):
     pre_cable_idx = jnp.array(pre_syn_edges[0, :], dtype=jnp.int32)
     syn_pre_idx = jnp.array(pre_syn_edges[1, :], dtype=jnp.int32)
 
     syn_post_idx = jnp.array(post_syn_edges[0, :], dtype=jnp.int32)
     post_cable_idx = jnp.array(post_syn_edges[1, :], dtype=jnp.int32)
-
-
 
     @jax.jit
     def synapse_pipeline(state, ds_dt, t):
@@ -257,9 +257,11 @@ def get_dummy_delay_synapse_pipeline(pre_syn_edges, post_syn_edges): # edges_H_t
         z = state['connectors']['dummy_delay']['z']
 
         presynaptic_voltage = cable_voltage[pre_cable_idx]
-        ds_dt['connectors']['dummy_delay']['z'] = ds_dt['connectors']['dummy_delay']['z'].at[syn_pre_idx, 0].add(presynaptic_voltage)
+        ds_dt['connectors']['dummy_delay']['z'] = ds_dt['connectors']['dummy_delay']['z'].at[syn_pre_idx, 0].add(
+            presynaptic_voltage)
 
-        ds_dt['connectors']['dummy_delay']['z'] = ds_dt['connectors']['dummy_delay']['z'] + jax.vmap(shift_operator)(z, tau_r, tau_d)
+        ds_dt['connectors']['dummy_delay']['z'] = ds_dt['connectors']['dummy_delay']['z'] + \
+            jax.vmap(shift_operator)(z, tau_r, tau_d)
 
         F_out = weight * jax.nn.sigmoid(z[:, -1]*slope - bias)
 
@@ -267,6 +269,7 @@ def get_dummy_delay_synapse_pipeline(pre_syn_edges, post_syn_edges): # edges_H_t
         return ds_dt
 
     return synapse_pipeline
+
 
 def __C(V_pre, s):
     L_max = s['L_max']
@@ -277,17 +280,23 @@ def __C(V_pre, s):
     ))
 
 # TODO using sum_i pi = 1, reduce dims to N - 1
+
+
 def get_kinetic_synapce_pipeline(
-    Q:dict[str, Callable],
+    Q: dict[str, Callable],
     g_syn,
     name,
     pre_syn_edges, post_syn_edges
 ):
-    pre_cable_idx = jnp.array(pre_syn_edges[0, :], dtype=jnp.int32) # те идут в синапс
-    syn_pre_idx = jnp.array(pre_syn_edges[1, :], dtype=jnp.int32) # те которые принимают кабель
+    pre_cable_idx = jnp.array(
+        pre_syn_edges[0, :], dtype=jnp.int32)  # те идут в синапс
+    # те которые принимают кабель
+    syn_pre_idx = jnp.array(pre_syn_edges[1, :], dtype=jnp.int32)
 
-    syn_post_idx = jnp.array(post_syn_edges[0, :], dtype=jnp.int32) # те которые идут в кабель
-    post_cable_idx = jnp.array(post_syn_edges[1, :], dtype=jnp.int32) # те кабеля, которые принимают синапс
+    # те которые идут в кабель
+    syn_post_idx = jnp.array(post_syn_edges[0, :], dtype=jnp.int32)
+    # те кабеля, которые принимают синапс
+    post_cable_idx = jnp.array(post_syn_edges[1, :], dtype=jnp.int32)
 
     Ps = set()
     for k, r in Q.items():
@@ -298,8 +307,8 @@ def get_kinetic_synapce_pipeline(
 
     @jax.jit
     def synapse_pipeline(state, ds_dt, t):
-        #assert state['connectors'][name]['E'] is not None
-        #for k in Ps:
+        # assert state['connectors'][name]['E'] is not None
+        # for k in Ps:
         #    assert state['connectors'][name]['P'][k] is not None
 
         cable_voltage = state['V']
@@ -315,21 +324,26 @@ def get_kinetic_synapce_pipeline(
 
         for k, r in Q.items():
             a, b = k.split('->')
-            synapce_ds_dt['P'][b] = synapce_ds_dt['P'][b].at[syn_pre_idx].add( + r(C, synapce_state)*synapce_state['P'][a][syn_pre_idx])
-            synapce_ds_dt['P'][a] = synapce_ds_dt['P'][a].at[syn_pre_idx].add( - r(C, synapce_state)*synapce_state['P'][a][syn_pre_idx])
+            synapce_ds_dt['P'][b] = synapce_ds_dt['P'][b].at[syn_pre_idx].add(
+                + r(C, synapce_state)*synapce_state['P'][a][syn_pre_idx])
+            synapce_ds_dt['P'][a] = synapce_ds_dt['P'][a].at[syn_pre_idx].add(
+                - r(C, synapce_state)*synapce_state['P'][a][syn_pre_idx])
 
-        I = g_syn(synapce_state)[syn_post_idx]*(synapce_state['E'][syn_post_idx] - postsynaptic_voltage)
+        I = g_syn(synapce_state)[
+            syn_post_idx]*(synapce_state['E'][syn_post_idx] - postsynaptic_voltage)
 
-        ds_dt['V'] = ds_dt['V'].at[post_cable_idx].add(I/post_membrane_capacitance)
+        ds_dt['V'] = ds_dt['V'].at[post_cable_idx].add(
+            I/post_membrane_capacitance)
         ds_dt['connectors'][name] = synapce_ds_dt
         return ds_dt
 
     return synapse_pipeline
 
+
 def get_component2_syn(pre_syn_edges, post_syn_edges):
     Q = {
-        'C->O':lambda c, s:s['r1']*c,
-        'O->C':lambda c, s:s['r2']
+        'C->O': lambda c, s: s['r1']*c,
+        'O->C': lambda c, s: s['r2']
     }
     name = 'comp2'
     return get_kinetic_synapce_pipeline(Q, lambda s: s['g']*s['P']['O'], name, pre_syn_edges, post_syn_edges)

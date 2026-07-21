@@ -53,7 +53,6 @@ class AbstractHHSimulation(FooConfig):
             }
         }
 
-
         is_dynamic = jax.tree_util.tree_map(
             lambda x: True, default_arguments)
 
@@ -83,6 +82,7 @@ class AbstractHHSimulation(FooConfig):
             return ds_dt
         return f_explicit
 
+
 class KineticSyn(AbstractHHSimulation):
     def __init__(self, root_ctx, model, name, P_defaut, other_states, default_r=10, stimulus=None):
         super().__init__(root_ctx, default_r, stimulus)
@@ -94,21 +94,23 @@ class KineticSyn(AbstractHHSimulation):
         num_H = ctx['num_nodes']['H']
         num_S = ctx['num_nodes']['S']
 
-        Q = jnp.zeros_like(num_S, dtype = jnp.float32)
+        Q = jnp.zeros_like(num_S, dtype=jnp.float32)
         for k, v in P_defaut.items():
             Q += v
         assert all(Q == jnp.ones(num_S, ))
         conn_state = {name: {
-            'E':jnp.zeros(num_S),
+            'E': jnp.zeros(num_S),
             'L_max': 2.84,
-            'V_p':2,
-            'K_p':5,
-            'P':P_defaut
+            'V_p': 2,
+            'K_p': 5,
+            'P': P_defaut
         } | other_states
         }
         self.default_arguments['connectors'] = conn_state
-        self.is_dynamic['connectors'] = jax.tree_util.tree_map(lambda x: True, conn_state)
-        self.groups['connectors'] = jax.tree_util.tree_map(lambda x: 'S', conn_state)
+        self.is_dynamic['connectors'] = jax.tree_util.tree_map(
+            lambda x: True, conn_state)
+        self.groups['connectors'] = jax.tree_util.tree_map(
+            lambda x: 'S', conn_state)
 
     def construct_f_explicit(self):
         pre_syn = self.ctx['edges_H_to_S']
@@ -123,21 +125,23 @@ class KineticSyn(AbstractHHSimulation):
 
         return f_explicit_generated
 
+
 class Syn2Comp(KineticSyn):
     def __init__(self, root_ctx, default_r=10, stimulus=None):
         ctx = root_ctx['root']
         num_H = ctx['num_nodes']['H']
         num_S = ctx['num_nodes']['S']
         P_defaut = {
-            'C':jnp.ones(num_S, dtype = jnp.float32),
-            'O':jnp.zeros(num_S, dtype = jnp.float32),
+            'C': jnp.ones(num_S, dtype=jnp.float32),
+            'O': jnp.zeros(num_S, dtype=jnp.float32),
         }
         other_states = {
-            'r1':0.1,
-            'r2':0.01,
-            'g':2.0,
+            'r1': 0.1,
+            'r2': 0.01,
+            'g': 2.0,
         }
-        super().__init__(root_ctx, get_component2_syn, 'comp2', P_defaut, other_states = other_states, default_r = default_r, stimulus = stimulus)
+        super().__init__(root_ctx, get_component2_syn, 'comp2', P_defaut,
+                         other_states=other_states, default_r=default_r, stimulus=stimulus)
 
 
 class Syn2Comp_static_params(Syn2Comp):
@@ -163,6 +167,7 @@ class Syn2Comp_static_params(Syn2Comp):
         self.is_dynamic['connectors']['comp2']['K_p'] = False
         self.is_dynamic['connectors']['comp2']['g'] = False
 
+
 class DDSsynFoo(AbstractHHSimulation):
     def __init__(self, root_ctx, default_r=10, N_ddp=5, stimulus=None):
         super().__init__(root_ctx, default_r, stimulus)
@@ -180,8 +185,10 @@ class DDSsynFoo(AbstractHHSimulation):
             'bias': jnp.ones((num_S, ), dtype=jnp.float32)*0,
         }}
         self.default_arguments['connectors'] = conn_state
-        self.is_dynamic['connectors'] = jax.tree_util.tree_map(lambda x: True, conn_state)
-        self.groups['connectors'] = jax.tree_util.tree_map(lambda x: 'S', conn_state)
+        self.is_dynamic['connectors'] = jax.tree_util.tree_map(
+            lambda x: True, conn_state)
+        self.groups['connectors'] = jax.tree_util.tree_map(
+            lambda x: 'S', conn_state)
 
     def construct_f_explicit(self):
         pre_syn = self.ctx['edges_H_to_S']
@@ -206,14 +213,16 @@ class StubSynFoo(AbstractHHSimulation):
         num_H = ctx['num_nodes']['H']
         num_S = ctx['num_nodes']['S']
         conn_state = {
-                'stub': {
-                    'V': jnp.zeros((num_S,), dtype=jnp.float32),
-                    'weight': jnp.ones((num_S,), dtype=jnp.float32) * 0.5,
-                }
+            'stub': {
+                'V': jnp.zeros((num_S,), dtype=jnp.float32),
+                'weight': jnp.ones((num_S,), dtype=jnp.float32) * 0.5,
             }
+        }
         self.default_arguments['connectors'] = conn_state
-        self.is_dynamic['connectors'] = jax.tree_util.tree_map(lambda x: True, conn_state)
-        self.groups['connectors'] = jax.tree_util.tree_map(lambda x: 'S', conn_state)
+        self.is_dynamic['connectors'] = jax.tree_util.tree_map(
+            lambda x: True, conn_state)
+        self.groups['connectors'] = jax.tree_util.tree_map(
+            lambda x: 'S', conn_state)
 
     def construct_f_explicit(self):
         pre_syn = self.ctx['edges_H_to_S']
@@ -250,6 +259,7 @@ class DDSsynFoo_static_params(DDSsynFoo):
         self.is_dynamic['connectors']['dummy_delay']['slope'] = False
         self.is_dynamic['connectors']['dummy_delay']['bias'] = False
 
+
 class StubSynFoo_static_params(StubSynFoo):
     def __init__(self, root_ctx, default_r=10, stimulus=None):
         super().__init__(root_ctx, default_r, stimulus)
@@ -281,14 +291,13 @@ def test_basic_simulation_pipeline(
     plt.savefig(str(img_path))
 
 
-
 def test_dds_simulation_pipeline(
     generated_dir
 ):
     npz_path = generated_dir / "test_preprocess_output.jconn"
     img_path = generated_dir / "dds_sim_result.png"
     root_ctx = load_context(str(npz_path))
-    foo = DDSsynFoo_static_params(root_ctx, N_ddp = 1)
+    foo = DDSsynFoo_static_params(root_ctx, N_ddp=1)
     sim = DefaultSim(foo)
     sol = sim.solve(0, 200, num=200)
     plt.plot(sol.ts, sol.ys['V'])
@@ -303,16 +312,17 @@ def test_basic_simulation_pipeline_with_stimulus(
     img_path1 = generated_dir / "basic_sim_result_stimula_only_stimulated.png"
     root_ctx = load_context(str(npz_path))
 
-    iclamp = lambda state, ds_dt, t: 70*(t > 20)
+    def iclamp(state, ds_dt, t): return 70*(t > 20)
     mapping = root_ctx['root']['mapping']['H']
 
     neurites_to_stimul = [
         '10675427',
         '11281421']
 
-    stimula = get_stim_pipeline_from_original_ids(mapping, ((neurites_to_stimul, iclamp),))
-    
-    foo = StubSynFoo_static_params(root_ctx, stimulus = stimula)
+    stimula = get_stim_pipeline_from_original_ids(
+        mapping, ((neurites_to_stimul, iclamp),))
+
+    foo = StubSynFoo_static_params(root_ctx, stimulus=stimula)
 
     sim = DefaultSim(foo)
     sol = sim.solve(0, 100, num=200)
@@ -320,13 +330,14 @@ def test_basic_simulation_pipeline_with_stimulus(
     plt.savefig(str(img_path))
     plt.clf()
 
-    mapped = apply_mappers(sol.ys, foo.get_dynamic_static_parts(foo.groups)[0], foo.ctx['mapping'])
-
+    mapped = apply_mappers(sol.ys, foo.get_dynamic_static_parts(
+        foo.groups)[0], foo.ctx['mapping'])
 
     for i in neurites_to_stimul:
-        plt.plot(sol.ts, mapped['V'][..., i], label = i)
+        plt.plot(sol.ts, mapped['V'][..., i], label=i)
     plt.legend()
     plt.savefig(str(img_path1))
+
 
 def test_basic_simulation_pipeline_with_stimulus_2comp(
     generated_dir
@@ -338,16 +349,17 @@ def test_basic_simulation_pipeline_with_stimulus_2comp(
     img_path3 = generated_dir / "basic_sim_result_stimula_only_stimulated_2comp_O.png"
     root_ctx = load_context(str(npz_path))
 
-    iclamp = lambda state, ds_dt, t: 70*(t > 20)
+    def iclamp(state, ds_dt, t): return 70*(t > 20)
     mapping = root_ctx['root']['mapping']['H']
 
     neurites_to_stimul = [
         '10675427',
         '11281421']
 
-    stimula = get_stim_pipeline_from_original_ids(mapping, ((neurites_to_stimul, iclamp),))
-    
-    foo = Syn2Comp_static_params(root_ctx, stimulus = stimula)
+    stimula = get_stim_pipeline_from_original_ids(
+        mapping, ((neurites_to_stimul, iclamp),))
+
+    foo = Syn2Comp_static_params(root_ctx, stimulus=stimula)
 
     sim = DefaultSim(foo)
     sol = sim.solve(0, 100, num=200)
@@ -355,13 +367,13 @@ def test_basic_simulation_pipeline_with_stimulus_2comp(
     plt.savefig(str(img_path))
     plt.clf()
 
-    mapped = apply_mappers(sol.ys, foo.get_dynamic_static_parts(foo.groups)[0], foo.ctx['mapping'])
+    mapped = apply_mappers(sol.ys, foo.get_dynamic_static_parts(
+        foo.groups)[0], foo.ctx['mapping'])
 
     for i in neurites_to_stimul:
-        plt.plot(sol.ts, mapped['V'][..., i], label = i)
+        plt.plot(sol.ts, mapped['V'][..., i], label=i)
     plt.legend()
     plt.savefig(str(img_path1))
-
     plt.clf()
 
     plt.title('C')

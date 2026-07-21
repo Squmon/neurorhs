@@ -1,4 +1,5 @@
 """Helpers for converting NetworkX graphs into compact JAX-friendly arrays."""
+from neurorhs.io import *
 import networkx as nx
 import numpy as np
 from typing import Dict, List, Tuple, Any, Union, Set
@@ -7,7 +8,6 @@ import itertools
 # --- Типы данных ---
 DirectednessMap = Dict[str, Dict[str, bool]]
 GraphResults = Dict[str, Any]
-from neurorhs.io import *
 
 
 def _get_group_name(graph: Union[nx.DiGraph, nx.MultiDiGraph], node_id: Any, node_type_groups: Dict[str, List[str]]) -> List[str]:
@@ -203,4 +203,3 @@ def extract_node_features(
         feature_arrays[key] = feature_array
 
     return feature_arrays
-
