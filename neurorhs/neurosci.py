@@ -267,3 +267,69 @@ def get_dummy_delay_synapse_pipeline(pre_syn_edges, post_syn_edges): # edges_H_t
         return ds_dt
 
     return synapse_pipeline
+
+def __C(V_pre, s):
+    L_max = s['L_max']
+    V_p = s['V_p']
+    K_p = s['K_p']
+    return L_max/(1 + jnp.exp(
+        -(V_pre - V_p)/K_p
+    ))
+
+# TODO using sum_i pi = 1, reduce dims to N - 1
+def get_kinetic_synapce_pipeline(
+    Q:dict[str, Callable],
+    g_syn,
+    name,
+    pre_syn_edges, post_syn_edges
+):
+    pre_cable_idx = jnp.array(pre_syn_edges[0, :], dtype=jnp.int32) # те идут в синапс
+    syn_pre_idx = jnp.array(pre_syn_edges[1, :], dtype=jnp.int32) # те которые принимают кабель
+
+    syn_post_idx = jnp.array(post_syn_edges[0, :], dtype=jnp.int32) # те которые идут в кабель
+    post_cable_idx = jnp.array(post_syn_edges[1, :], dtype=jnp.int32) # те кабеля, которые принимают синапс
+
+    Ps = set()
+    for k, r in Q.items():
+        a, b = k.split('->')
+        assert a != b
+        Ps.add(a)
+        Ps.add(b)
+
+    @jax.jit
+    def synapse_pipeline(state, ds_dt, t):
+        #assert state['connectors'][name]['E'] is not None
+        #for k in Ps:
+        #    assert state['connectors'][name]['P'][k] is not None
+
+        cable_voltage = state['V']
+        membrane_capacitance = state['morphology']['C']
+        post_membrane_capacitance = membrane_capacitance[post_cable_idx]
+
+        synapce_state = state['connectors'][name]
+        synapce_ds_dt = ds_dt['connectors'][name]
+
+        presynaptic_voltage = cable_voltage[pre_cable_idx]
+        postsynaptic_voltage = cable_voltage[post_cable_idx]
+        C = __C(presynaptic_voltage, synapce_state)[syn_pre_idx]
+
+        for k, r in Q.items():
+            a, b = k.split('->')
+            synapce_ds_dt['P'][b] = synapce_ds_dt['P'][b].at[syn_pre_idx].add( + r(C, synapce_state)*synapce_state['P'][a][syn_pre_idx])
+            synapce_ds_dt['P'][a] = synapce_ds_dt['P'][a].at[syn_pre_idx].add( - r(C, synapce_state)*synapce_state['P'][a][syn_pre_idx])
+
+        I = g_syn(synapce_state)[syn_post_idx]*(synapce_state['E'][syn_post_idx] - postsynaptic_voltage)
+
+        ds_dt['V'] = ds_dt['V'].at[post_cable_idx].add(I/post_membrane_capacitance)
+        ds_dt['connectors'][name] = synapce_ds_dt
+        return ds_dt
+
+    return synapse_pipeline
+
+def get_component2_syn(pre_syn_edges, post_syn_edges):
+    Q = {
+        'C->O':lambda c, s:s['r1']*c,
+        'O->C':lambda c, s:s['r2']
+    }
+    name = 'comp2'
+    return get_kinetic_synapce_pipeline(Q, lambda s: s['g']*s['P']['O'], name, pre_syn_edges, post_syn_edges)

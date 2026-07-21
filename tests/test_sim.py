@@ -83,6 +83,85 @@ class AbstractHHSimulation(FooConfig):
             return ds_dt
         return f_explicit
 
+class KineticSyn(AbstractHHSimulation):
+    def __init__(self, root_ctx, model, name, P_defaut, other_states, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        ctx = root_ctx['root']
+        self.stimulus = stimulus
+        self.model = model
+        self.model_name = name
+
+        num_H = ctx['num_nodes']['H']
+        num_S = ctx['num_nodes']['S']
+
+        Q = jnp.zeros_like(num_S, dtype = jnp.float32)
+        for k, v in P_defaut.items():
+            Q += v
+        assert all(Q == jnp.ones(num_S, ))
+        conn_state = {name: {
+            'E':jnp.zeros(num_S),
+            'L_max': 2.84,
+            'V_p':2,
+            'K_p':5,
+            'P':P_defaut
+        } | other_states
+        }
+        self.default_arguments['connectors'] = conn_state
+        self.is_dynamic['connectors'] = jax.tree_util.tree_map(lambda x: True, conn_state)
+        self.groups['connectors'] = jax.tree_util.tree_map(lambda x: 'S', conn_state)
+
+    def construct_f_explicit(self):
+        pre_syn = self.ctx['edges_H_to_S']
+        post_syn = self.ctx['edges_S_to_H']
+        sp = super().construct_f_explicit()
+        syn_pipe = self.model(pre_syn, post_syn)
+
+        def f_explicit_generated(s, ds_dt, t):
+            ds_dt = sp(s, ds_dt, t)
+            ds_dt = syn_pipe(s, ds_dt, t)
+            return ds_dt
+
+        return f_explicit_generated
+
+class Syn2Comp(KineticSyn):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        ctx = root_ctx['root']
+        num_H = ctx['num_nodes']['H']
+        num_S = ctx['num_nodes']['S']
+        P_defaut = {
+            'C':jnp.ones(num_S, dtype = jnp.float32),
+            'O':jnp.zeros(num_S, dtype = jnp.float32),
+        }
+        other_states = {
+            'r1':0.1,
+            'r2':0.01,
+            'g':2.0,
+        }
+        super().__init__(root_ctx, get_component2_syn, 'comp2', P_defaut, other_states = other_states, default_r = default_r, stimulus = stimulus)
+
+
+class Syn2Comp_static_params(Syn2Comp):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        self.is_dynamic['morphology']['position']['x'] = False
+        self.is_dynamic['morphology']['position']['y'] = False
+        self.is_dynamic['morphology']['position']['z'] = False
+        self.is_dynamic['morphology']['r'] = False
+        self.is_dynamic['morphology']['C'] = False
+        self.is_dynamic['morphology']['Na']['gNa'] = False
+        self.is_dynamic['morphology']['Na']['eNa'] = False
+        self.is_dynamic['morphology']['K']['gK'] = False
+        self.is_dynamic['morphology']['K']['eK'] = False
+        self.is_dynamic['morphology']['leak']['gLeak'] = False
+        self.is_dynamic['morphology']['leak']['eLeak'] = False
+
+        self.is_dynamic['connectors']['comp2']['r1'] = False
+        self.is_dynamic['connectors']['comp2']['r2'] = False
+        self.is_dynamic['connectors']['comp2']['E'] = False
+        self.is_dynamic['connectors']['comp2']['L_max'] = False
+        self.is_dynamic['connectors']['comp2']['V_p'] = False
+        self.is_dynamic['connectors']['comp2']['K_p'] = False
+        self.is_dynamic['connectors']['comp2']['g'] = False
 
 class DDSsynFoo(AbstractHHSimulation):
     def __init__(self, root_ctx, default_r=10, N_ddp=5, stimulus=None):
@@ -248,3 +327,49 @@ def test_basic_simulation_pipeline_with_stimulus(
         plt.plot(sol.ts, mapped['V'][..., i], label = i)
     plt.legend()
     plt.savefig(str(img_path1))
+
+def test_basic_simulation_pipeline_with_stimulus_2comp(
+    generated_dir
+):
+    npz_path = generated_dir / "test_preprocess_output.jconn"
+    img_path = generated_dir / "basic_sim_result_stimula_2comp.png"
+    img_path1 = generated_dir / "basic_sim_result_stimula_only_stimulated_2comp.png"
+    img_path2 = generated_dir / "basic_sim_result_stimula_only_stimulated_2comp_C.png"
+    img_path3 = generated_dir / "basic_sim_result_stimula_only_stimulated_2comp_O.png"
+    root_ctx = load_context(str(npz_path))
+
+    iclamp = lambda state, ds_dt, t: 70*(t > 20)
+    mapping = root_ctx['root']['mapping']['H']
+
+    neurites_to_stimul = [
+        '10675427',
+        '11281421']
+
+    stimula = get_stim_pipeline_from_original_ids(mapping, ((neurites_to_stimul, iclamp),))
+    
+    foo = Syn2Comp_static_params(root_ctx, stimulus = stimula)
+
+    sim = DefaultSim(foo)
+    sol = sim.solve(0, 100, num=200)
+    plt.plot(sol.ts, sol.ys['V'])
+    plt.savefig(str(img_path))
+    plt.clf()
+
+    mapped = apply_mappers(sol.ys, foo.get_dynamic_static_parts(foo.groups)[0], foo.ctx['mapping'])
+
+    for i in neurites_to_stimul:
+        plt.plot(sol.ts, mapped['V'][..., i], label = i)
+    plt.legend()
+    plt.savefig(str(img_path1))
+
+    plt.clf()
+
+    plt.title('C')
+    plt.plot(sol.ts, sol.ys['connectors']['comp2']['P']['C'])
+    plt.savefig(str(img_path2))
+    plt.clf()
+
+    plt.title('O')
+    plt.plot(sol.ts, sol.ys['connectors']['comp2']['P']['O'])
+    plt.savefig(str(img_path3))
+    plt.clf()
