@@ -107,6 +107,40 @@ class SimulationConfig:
     def load_results_with_mapping(path, to_jax=False):
         raise NotImplementedError
 
+class ExplicitSim(SimulationConfig):
+    def __init__(self, foo_config):
+        self.foo_config: FooConfig = foo_config
+        
+        self.f_explicit = foo_config.get_diffrax_explicit_part()
+
+        self.term_explicit = diffrax.ODETerm(self.f_explicit)
+
+    def solve(self, t0, t1, dt0=0.01, y0=None, num=100, max_steps=100_000, save_at=None):
+        if save_at is None:
+            save_at = diffrax.SaveAt(ts=jnp.linspace(t0, t1, num))
+        if y0 is None:
+            y0, _ = self.foo_config.get_dynamic_static_parts()
+
+        sol = diffrax.diffeqsolve(
+            self.term_explicit,
+            self.get_solver(),
+            t0=t0,
+            t1=t1,
+            dt0=dt0,
+            y0=y0,
+            stepsize_controller=self.get_stepsize_controller(),
+            saveat=save_at,
+            max_steps=max_steps
+        )
+        return sol
+
+class DefaultExplicitSim(ExplicitSim):
+    def get_stepsize_controller(self):
+        return diffrax.PIDController(rtol=1e-5, atol=1e-5)
+
+    def get_solver(self):
+        return diffrax.Dopri5()
+
 
 class DefaultSim(SimulationConfig):
     def get_stepsize_controller(self):

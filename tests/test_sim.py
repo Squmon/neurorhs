@@ -475,7 +475,7 @@ def test_basic_simulation_pipeline_with_stimulus_2comp(
     plt.clf()
 
 
-def test_collapsed_simulation(
+def test_point_simulation(
     graph_path,
     metadata_path,
     type_groups,
@@ -531,7 +531,7 @@ def test_collapsed_simulation(
     # 6. Run simulation and save plot
     root_ctx = load_context(str(jconn_path))
     foo = Syn2Comp_static_paramsPoint(root_ctx)
-    sim = DefaultSim(foo)
+    sim = DefaultExplicitSim(foo)
     sol = sim.solve(0, 100, num=200)
 
     # Plot results
