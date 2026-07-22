@@ -1,9 +1,8 @@
 from neurorhs.preprocessing.preprocess import process_params
 from neurorhs.preprocessing.graph_to_arrays import (
-    load_context,
     process_graph_to_core_arrays,
-    save_context,
 )
+from neurorhs.io import load_context, save_context
 import pytest
 import numpy as np
 import networkx as nx

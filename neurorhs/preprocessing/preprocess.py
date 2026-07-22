@@ -1,10 +1,55 @@
 """Helpers for turning graph data and metadata into the saved JAX-ready context."""
 
 import neurorhs.preprocessing.graph_to_arrays as ga
+from neurorhs.io import save_context
 import networkx as nx
 import numpy as np
 import pandas as pd
 import os
+
+
+def collapse_nodes(graph: nx.Graph, mapping: dict) -> nx.Graph:
+    """Collapse nodes in the graph based on the mapping dictionary.
+    
+    If mapping maps key->val, we delete key and transfer all its edges to val.
+    Chained mappings (e.g. a->b, b->c) are resolved recursively to their final targets.
+    """
+    resolved_mapping = {}
+    for node in graph.nodes():
+        visited = set()
+        curr = node
+        while curr in mapping and curr not in visited:
+            visited.add(curr)
+            curr = mapping[curr]
+        if curr != node:
+            resolved_mapping[node] = curr
+
+    new_graph = graph.__class__()
+    new_graph.graph.update(graph.graph)
+
+    for node, data in graph.nodes(data=True):
+        if node not in resolved_mapping:
+            new_graph.add_node(node, **data)
+
+    is_multigraph = graph.is_multigraph()
+
+    if is_multigraph:
+        for u, v, key, data in graph.edges(keys=True, data=True):
+            u_new = resolved_mapping.get(u, u)
+            v_new = resolved_mapping.get(v, v)
+            new_graph.add_edge(u_new, v_new, key=key, **data)
+    else:
+        for u, v, data in graph.edges(data=True):
+            u_new = resolved_mapping.get(u, u)
+            v_new = resolved_mapping.get(v, v)
+            if new_graph.has_edge(u_new, v_new):
+                existing_data = new_graph[u_new][v_new]
+                merged_data = {**existing_data, **data}
+                new_graph.add_edge(u_new, v_new, **merged_data)
+            else:
+                new_graph.add_edge(u_new, v_new, **data)
+
+    return new_graph
 
 
 def process_params(path_to_full, type_groups, directedness, path_to_save, path_to_metadata, id_column='node_id',
@@ -35,7 +80,7 @@ def process_params(path_to_full, type_groups, directedness, path_to_save, path_t
                   for soma_id in all_somas]
     soma_pairs = np.array(soma_pairs)
 
-    ga.save_context(
+    save_context(
         processed_graph,
         path_to_save,
         {'stom': soma_pairs} | {

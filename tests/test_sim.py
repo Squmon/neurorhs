@@ -1,5 +1,8 @@
 from neurorhs.configs.default import *
-from neurorhs.preprocessing.graph_to_arrays import process_graph_to_core_arrays, load_context
+from neurorhs.preprocessing.graph_to_arrays import process_graph_to_core_arrays
+from neurorhs.io import load_context
+from neurorhs.preprocessing.preprocess import collapse_nodes, process_params
+import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 from neurorhs.utils import apply_mappers, Mapper
@@ -83,6 +86,10 @@ class AbstractHHSimulation(FooConfig):
         return f_explicit
 
 
+class PointAbstractHHSimulation(AbstractHHSimulation):
+    def construct_f_implicit(self):
+        return lambda s, ds_dt, t:ds_dt
+
 class KineticSyn(AbstractHHSimulation):
     def __init__(self, root_ctx, model, name, P_defaut, other_states, default_r=10, stimulus=None):
         super().__init__(root_ctx, default_r, stimulus)
@@ -125,6 +132,47 @@ class KineticSyn(AbstractHHSimulation):
 
         return f_explicit_generated
 
+class KineticSynPoint(PointAbstractHHSimulation):
+    def __init__(self, root_ctx, model, name, P_defaut, other_states, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        ctx = root_ctx['root']
+        self.stimulus = stimulus
+        self.model = model
+        self.model_name = name
+
+        num_H = ctx['num_nodes']['H']
+        num_S = ctx['num_nodes']['S']
+
+        Q = jnp.zeros_like(num_S, dtype=jnp.float32)
+        for k, v in P_defaut.items():
+            Q += v
+        assert all(Q == jnp.ones(num_S, ))
+        conn_state = {name: {
+            'E': jnp.zeros(num_S),
+            'L_max': 2.84,
+            'V_p': 2,
+            'K_p': 5,
+            'P': P_defaut
+        } | other_states
+        }
+        self.default_arguments['connectors'] = conn_state
+        self.is_dynamic['connectors'] = jax.tree_util.tree_map(
+            lambda x: True, conn_state)
+        self.groups['connectors'] = jax.tree_util.tree_map(
+            lambda x: 'S', conn_state)
+
+    def construct_f_explicit(self):
+        pre_syn = self.ctx['edges_H_to_S']
+        post_syn = self.ctx['edges_S_to_H']
+        sp = super().construct_f_explicit()
+        syn_pipe = self.model(pre_syn, post_syn)
+
+        def f_explicit_generated(s, ds_dt, t):
+            ds_dt = sp(s, ds_dt, t)
+            ds_dt = syn_pipe(s, ds_dt, t)
+            return ds_dt
+
+        return f_explicit_generated
 
 class Syn2Comp(KineticSyn):
     def __init__(self, root_ctx, default_r=10, stimulus=None):
@@ -144,7 +192,47 @@ class Syn2Comp(KineticSyn):
                          other_states=other_states, default_r=default_r, stimulus=stimulus)
 
 
+class Syn2CompPoint(KineticSynPoint):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        ctx = root_ctx['root']
+        num_H = ctx['num_nodes']['H']
+        num_S = ctx['num_nodes']['S']
+        P_defaut = {
+            'C': jnp.ones(num_S, dtype=jnp.float32),
+            'O': jnp.zeros(num_S, dtype=jnp.float32),
+        }
+        other_states = {
+            'r1': 0.1,
+            'r2': 0.01,
+            'g': 2.0,
+        }
+        super().__init__(root_ctx, get_component2_syn, 'comp2', P_defaut,
+                         other_states=other_states, default_r=default_r, stimulus=stimulus)
+
 class Syn2Comp_static_params(Syn2Comp):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        self.is_dynamic['morphology']['position']['x'] = False
+        self.is_dynamic['morphology']['position']['y'] = False
+        self.is_dynamic['morphology']['position']['z'] = False
+        self.is_dynamic['morphology']['r'] = False
+        self.is_dynamic['morphology']['C'] = False
+        self.is_dynamic['morphology']['Na']['gNa'] = False
+        self.is_dynamic['morphology']['Na']['eNa'] = False
+        self.is_dynamic['morphology']['K']['gK'] = False
+        self.is_dynamic['morphology']['K']['eK'] = False
+        self.is_dynamic['morphology']['leak']['gLeak'] = False
+        self.is_dynamic['morphology']['leak']['eLeak'] = False
+
+        self.is_dynamic['connectors']['comp2']['r1'] = False
+        self.is_dynamic['connectors']['comp2']['r2'] = False
+        self.is_dynamic['connectors']['comp2']['E'] = False
+        self.is_dynamic['connectors']['comp2']['L_max'] = False
+        self.is_dynamic['connectors']['comp2']['V_p'] = False
+        self.is_dynamic['connectors']['comp2']['K_p'] = False
+        self.is_dynamic['connectors']['comp2']['g'] = False
+
+class Syn2Comp_static_paramsPoint(Syn2CompPoint):
     def __init__(self, root_ctx, default_r=10, stimulus=None):
         super().__init__(root_ctx, default_r, stimulus)
         self.is_dynamic['morphology']['position']['x'] = False
@@ -385,3 +473,75 @@ def test_basic_simulation_pipeline_with_stimulus_2comp(
     plt.plot(sol.ts, sol.ys['connectors']['comp2']['P']['O'])
     plt.savefig(str(img_path3))
     plt.clf()
+
+
+def test_collapsed_simulation(
+    graph_path,
+    metadata_path,
+    type_groups,
+    directedness,
+    generated_dir
+):
+    # 1. Load the original graph
+    g = nx.read_gml(graph_path)
+
+    # 2. Build mapping: collapse all morphology nodes to their "name" property (neuron ID)
+    mapping = {}
+    for node, data in g.nodes(data=True):
+        node_type = data.get('type')
+        if node_type != 'connector':
+            neuron_id = data.get('name')
+            if neuron_id:
+                mapping[node] = str(neuron_id)
+
+    # 3. Collapse the nodes
+    collapsed_g = collapse_nodes(g, mapping)
+
+    # Set type="root" for all the new morphology nodes
+    for node in list(collapsed_g.nodes()):
+        node_type = collapsed_g.nodes[node].get('type')
+        if node_type != 'connector':
+            collapsed_g.nodes[node]['type'] = 'root'
+
+    # Save collapsed graph to a temp path
+    collapsed_gml_path = generated_dir / "collapsed_20n.gml"
+    nx.write_gml(collapsed_g, str(collapsed_gml_path))
+
+    # 4. Process the metadata
+    # Load metadata and filter to only keep rows with type == 'root'
+    df = pd.read_csv(metadata_path)
+    df_root = df[df['type'] == 'root'].copy()
+    
+    # We write it to a temporary csv file
+    temp_metadata_path = generated_dir / "temp_collapsed_metadata.csv"
+    df_root.to_csv(temp_metadata_path, index=False)
+
+    # 5. Process parameters to save .jconn file
+    jconn_path = generated_dir / "collapsed_sim.jconn"
+    process_params(
+        path_to_full=str(collapsed_gml_path),
+        type_groups=type_groups,
+        directedness=directedness,
+        path_to_save=str(jconn_path),
+        path_to_metadata=str(temp_metadata_path),
+        id_column='neuron_id',
+        soma_criteria=lambda metadata: metadata['type'] == 'root'
+    )
+
+    # 6. Run simulation and save plot
+    root_ctx = load_context(str(jconn_path))
+    foo = Syn2Comp_static_paramsPoint(root_ctx)
+    sim = DefaultSim(foo)
+    sol = sim.solve(0, 100, num=200)
+
+    # Plot results
+    img_path = generated_dir / "collapsed_sim_result.png"
+    plt.figure()
+    plt.plot(sol.ts, sol.ys['V'])
+    plt.title("Simulation with Collapsed Single-Compartment Neurons")
+    plt.xlabel("Time")
+    plt.ylabel("Voltage (V)")
+    plt.savefig(str(img_path))
+    plt.clf()
+    assert img_path.exists()
+
