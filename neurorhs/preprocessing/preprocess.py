@@ -12,13 +12,13 @@ def process_params(path_to_full, type_groups, directedness, path_to_save, path_t
                        'x': 'x',
                        'y': 'y',
                        'z': 'z',
-                       'r': 'radius'}, soma_criteria=lambda metadata: metadata['type'] == 'root', cable_key='H'):
+                       'r': 'radius'}, soma_criteria=lambda metadata: metadata['type'] == 'root', cable_key='H', features_config = None):
     """Load a graph, enrich it with metadata, and save the resulting JAX context."""
 
     # processing graph
     graph = nx.read_gml(path_to_full)
     processed_graph = ga.process_graph_to_core_arrays(
-        graph, type_groups, directedness)
+        graph, type_groups, directedness, features_config)
     global_mapping = processed_graph['mapping']
 
     # rpocessing metadata

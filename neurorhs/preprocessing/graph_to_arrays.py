@@ -1,5 +1,4 @@
 """Helpers for converting NetworkX graphs into compact JAX-friendly arrays."""
-from neurorhs.io import *
 import networkx as nx
 import numpy as np
 from typing import Dict, List, Tuple, Any, Union, Set
@@ -134,7 +133,8 @@ def _calculate_user_mapping(
 def process_graph_to_core_arrays(
     graph: Union[nx.DiGraph, nx.MultiDiGraph],
     node_type_groups: Dict[str, List[str]],
-    edge_directedness: DirectednessMap
+    edge_directedness: DirectednessMap,
+    feature_config: Dict[str, List[str]] = None
 ) -> GraphResults:
     """Convert a graph into the core arrays and mappings used by the JAX pipeline."""
     print("Начало обработки графа (маппинги и ребра)...")
@@ -149,6 +149,7 @@ def process_graph_to_core_arrays(
     print(
         f"Обработка завершена. Найдено {len(num_nodes)} групп и {len(edge_arrays)} массивов ребер.")
 
+
     context: GraphResults = {
         'num_nodes': num_nodes,
         'mapping': final_mapping,
@@ -156,8 +157,12 @@ def process_graph_to_core_arrays(
         '__RAW_GLOBAL_MAPPING__': global_mapping,
         '__RAW_LOCAL_MAPS__': local_maps,
     }
-
+    if feature_config is None:
+        return context
+    features = extract_node_features(graph, context, feature_config)
+    context['features'] = features
     return context
+
 
 
 def extract_node_features(
@@ -182,8 +187,9 @@ def extract_node_features(
         num = num_nodes[group_name]
         local_map = local_maps.get(group_name, {})
 
-        num_features = len(properties_list)
-        feature_array = np.zeros((num, num_features), dtype=np.float64)
+        feature_array: Dict[str, np.ndarray] = {}
+        for prop_key, tp in properties_list:
+            feature_array[prop_key] = np.empty((num,), dtype=tp)
 
         for node_id, global_id in global_mapping.items():
             local_idx = local_map.get(global_id)
@@ -191,15 +197,10 @@ def extract_node_features(
                 continue
 
             node_data = graph.nodes[node_id]
+            for prop_key, tp in properties_list:
+                value = node_data[prop_key]
+                feature_array[prop_key][local_idx] = value
 
-            for prop_idx, prop_key in enumerate(properties_list):
-                value = node_data.get(prop_key, 0.0)
-                try:
-                    feature_array[local_idx, prop_idx] = float(value)
-                except (ValueError, TypeError):
-                    feature_array[local_idx, prop_idx] = 0.0
-
-        key = f'features_{group_name}'
-        feature_arrays[key] = feature_array
+        feature_arrays[group_name] = feature_array
 
     return feature_arrays
