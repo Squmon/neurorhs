@@ -280,6 +280,8 @@ def __L(V_pre, s):
     ))
 
 
+import inspect
+
 # TODO using sum_i pi = 1, reduce dims to N - 1
 def get_kinetic_synapce_pipeline(
     Q: dict[str, Callable],
@@ -346,3 +348,73 @@ def get_component2_syn(pre_syn_edges, post_syn_edges):
     }
     name = 'comp2'
     return get_kinetic_synapce_pipeline(Q, lambda s: s['g']*s['P']['O'], name, pre_syn_edges, post_syn_edges)
+
+
+def get_ampa_kainate_2state_syn(pre_syn_edges, post_syn_edges):
+    """AMPA/kainate 2-state kinetic synapse pipeline (C <-> O)."""
+    Q = {
+        'C->O': lambda L, s: s['r1'] * L,
+        'O->C': lambda L, s: s['r2'],
+    }
+    name = 'ampa_2state'
+    return get_kinetic_synapce_pipeline(Q, lambda s: s['g'] * s['P']['O'], name, pre_syn_edges, post_syn_edges)
+
+
+def get_ampa_kainate_6state_syn(pre_syn_edges, post_syn_edges):
+    """AMPA/kainate 6-state kinetic synapse pipeline (C <-> C1 <-> C2 <-> O, C1 <-> D1, C2 <-> D2)."""
+    Q = {
+        'C->C1': lambda L, s: s['r1'] * L,
+        'C1->C': lambda L, s: s['r2'],
+        'C1->C2': lambda L, s: s['r3'] * L,
+        'C2->C1': lambda L, s: s['r4'],
+        'C2->O': lambda L, s: s['r5'],
+        'O->C2': lambda L, s: s['r6'],
+        'C1->D1': lambda L, s: s['r7'] * L,
+        'D1->C1': lambda L, s: s['r8'],
+        'C2->D2': lambda L, s: s['r9'] * L,
+        'D2->C2': lambda L, s: s['r10'],
+    }
+    name = 'ampa_6state'
+    return get_kinetic_synapce_pipeline(Q, lambda s: s['g'] * s['P']['O'], name, pre_syn_edges, post_syn_edges)
+
+
+# def get_nmda_2state_syn(pre_syn_edges, post_syn_edges):
+#     """NMDA 2-state kinetic synapse pipeline with voltage-dependent Mg2+ block (C <-> O)."""
+#     Q = {
+#         'C->O': lambda L, s: s['r1'] * L,
+#         'O->C': lambda L, s: s['r2'],
+#     }
+
+#     def g_syn(s, V):
+#         b_v = 1.0 / (1.0 + jnp.exp(-0.062 * V) * s['Mg'] / 3.57)
+#         return s['g'] * b_v * s['P']['O']
+
+#     name = 'nmda_2state'
+#     return get_kinetic_synapce_pipeline(Q, g_syn, name, pre_syn_edges, post_syn_edges)
+
+
+def get_gaba_a_2state_syn(pre_syn_edges, post_syn_edges):
+    """GABA_A 2-state kinetic synapse pipeline (C <-> O)."""
+    Q = {
+        'C->O': lambda L, s: s['r1'] * L,
+        'O->C': lambda L, s: s['r2'],
+    }
+    name = 'gaba_a_2state'
+    return get_kinetic_synapce_pipeline(Q, lambda s: s['g'] * s['P']['O'], name, pre_syn_edges, post_syn_edges)
+
+
+def get_gaba_b_syn(pre_syn_edges, post_syn_edges):
+    """GABA_B metabotropic G-protein gated kinetic synapse pipeline (C <-> O)."""
+    Q = {
+        'C->O': lambda L, s: s['r1'] * L,
+        'O->C': lambda L, s: s['r2'],
+    }
+
+    def g_syn(s):
+        g_conc = s['P']['O']
+        g_n = g_conc ** s['n']
+        return s['g'] * (g_n / (g_n + s['Kd']))
+
+    name = 'gaba_b'
+    return get_kinetic_synapce_pipeline(Q, g_syn, name, pre_syn_edges, post_syn_edges)
+

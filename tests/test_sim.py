@@ -376,6 +376,7 @@ def test_basic_simulation_pipeline(
     sim = DefaultSim(foo)
     sol = sim.solve(0, 200, num=200)
     plt.plot(sol.ts, sol.ys['V'])
+    plt.title("Basic simulation")
     plt.savefig(str(img_path))
 
 
@@ -389,6 +390,7 @@ def test_dds_simulation_pipeline(
     sim = DefaultSim(foo)
     sol = sim.solve(0, 200, num=200)
     plt.plot(sol.ts, sol.ys['V'])
+    plt.title("DDS simulation")
     plt.savefig(str(img_path))
 
 
@@ -415,6 +417,7 @@ def test_basic_simulation_pipeline_with_stimulus(
     sim = DefaultSim(foo)
     sol = sim.solve(0, 100, num=200)
     plt.plot(sol.ts, sol.ys['V'])
+    plt.title("Basic simulation with stimulus")
     plt.savefig(str(img_path))
     plt.clf()
 
@@ -424,6 +427,7 @@ def test_basic_simulation_pipeline_with_stimulus(
     for i in neurites_to_stimul:
         plt.plot(sol.ts, mapped['V'][..., i], label=i)
     plt.legend()
+    plt.title("Stimulated neurites")
     plt.savefig(str(img_path1))
 
 
@@ -452,6 +456,7 @@ def test_basic_simulation_pipeline_with_stimulus_2comp(
     sim = DefaultSim(foo)
     sol = sim.solve(0, 100, num=200)
     plt.plot(sol.ts, sol.ys['V'])
+    plt.title("Two-compartment simulation with stimulus")
     plt.savefig(str(img_path))
     plt.clf()
 
@@ -461,16 +466,19 @@ def test_basic_simulation_pipeline_with_stimulus_2comp(
     for i in neurites_to_stimul:
         plt.plot(sol.ts, mapped['V'][..., i], label=i)
     plt.legend()
+    plt.title("Stimulated neurites for two-compartment model")
     plt.savefig(str(img_path1))
     plt.clf()
 
     plt.title('C')
     plt.plot(sol.ts, sol.ys['connectors']['comp2']['P']['C'])
+    plt.title("Two-compartment state C")
     plt.savefig(str(img_path2))
     plt.clf()
 
     plt.title('O')
     plt.plot(sol.ts, sol.ys['connectors']['comp2']['P']['O'])
+    plt.title("Two-compartment state O")
     plt.savefig(str(img_path3))
     plt.clf()
 
@@ -545,3 +553,348 @@ def test_point_simulation(
     plt.clf()
     assert img_path.exists()
 
+
+class SynAmpa2State(KineticSyn):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        ctx = root_ctx['root']
+        num_S = ctx['num_nodes']['S']
+        P_defaut = {
+            'C': jnp.ones(num_S, dtype=jnp.float32),
+            'O': jnp.zeros(num_S, dtype=jnp.float32),
+        }
+        other_states = {
+            'r1': 1.0,
+            'r2': 9.0,
+            'g': 1.0,
+        }
+        super().__init__(root_ctx, get_ampa_kainate_2state_syn, 'ampa_2state', P_defaut,
+                         other_states=other_states, default_r=default_r, stimulus=stimulus)
+
+
+class SynAmpa6State(KineticSyn):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        ctx = root_ctx['root']
+        num_S = ctx['num_nodes']['S']
+        P_defaut = {
+            'C': jnp.ones(num_S, dtype=jnp.float32),
+            'C1': jnp.zeros(num_S, dtype=jnp.float32),
+            'C2': jnp.zeros(num_S, dtype=jnp.float32),
+            'O': jnp.zeros(num_S, dtype=jnp.float32),
+            'D1': jnp.zeros(num_S, dtype=jnp.float32),
+            'D2': jnp.zeros(num_S, dtype=jnp.float32),
+        }
+        other_states = {
+            'r1': 2e1,
+            'r2': 13.0,
+            'r3': 1e1,
+            'r4': 26.0,
+            'r5': 9.0,
+            'r6': 5.0,
+            'r7': 1e2,
+            'r8': 0.2,
+            'r9': 2.0,
+            'r10': 0.1,
+            'g': 1.0,
+        }
+        super().__init__(root_ctx, get_ampa_kainate_6state_syn, 'ampa_6state', P_defaut,
+                         other_states=other_states, default_r=default_r, stimulus=stimulus)
+
+
+class SynNmda2State(KineticSyn):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        ctx = root_ctx['root']
+        num_S = ctx['num_nodes']['S']
+        P_defaut = {
+            'C': jnp.ones(num_S, dtype=jnp.float32),
+            'O': jnp.zeros(num_S, dtype=jnp.float32),
+        }
+        other_states = {
+            'r1': 72.0,
+            'r2': 6.6,
+            'Mg': 1.0,
+            'g': 1.0,
+        }
+        super().__init__(root_ctx, get_nmda_2state_syn, 'nmda_2state', P_defaut,
+                         other_states=other_states, default_r=default_r, stimulus=stimulus)
+
+
+class SynGabaA2State(KineticSyn):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        ctx = root_ctx['root']
+        num_S = ctx['num_nodes']['S']
+        P_defaut = {
+            'C': jnp.ones(num_S, dtype=jnp.float32),
+            'O': jnp.zeros(num_S, dtype=jnp.float32),
+        }
+        other_states = {
+            'r1': 5.0,
+            'r2': 1.0,
+            'g': 1.0,
+        }
+        super().__init__(root_ctx, get_gaba_a_2state_syn, 'gaba_a_2state', P_defaut,
+                         other_states=other_states, default_r=default_r, stimulus=stimulus)
+
+
+class SynGabaBSyn(KineticSyn):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        ctx = root_ctx['root']
+        num_S = ctx['num_nodes']['S']
+        P_defaut = {
+            'C': jnp.ones(num_S, dtype=jnp.float32),
+            'O': jnp.zeros(num_S, dtype=jnp.float32),
+        }
+        other_states = {
+            'r1': 1.0,
+            'r2': 1.7,
+            'n': 1.0,
+            'Kd': 1.0,
+            'g': 1.0,
+        }
+        super().__init__(root_ctx, get_gaba_b_syn, 'gaba_b', P_defaut,
+                         other_states=other_states, default_r=default_r, stimulus=stimulus)
+
+
+class SynAmpa2State_static_params(SynAmpa2State):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        self.is_dynamic['morphology']['position']['x'] = False
+        self.is_dynamic['morphology']['position']['y'] = False
+        self.is_dynamic['morphology']['position']['z'] = False
+        self.is_dynamic['morphology']['r'] = False
+        self.is_dynamic['morphology']['C'] = False
+        self.is_dynamic['morphology']['Na']['gNa'] = False
+        self.is_dynamic['morphology']['Na']['eNa'] = False
+        self.is_dynamic['morphology']['K']['gK'] = False
+        self.is_dynamic['morphology']['K']['eK'] = False
+        self.is_dynamic['morphology']['leak']['gLeak'] = False
+        self.is_dynamic['morphology']['leak']['eLeak'] = False
+
+        self.is_dynamic['connectors']['ampa_2state']['r1'] = False
+        self.is_dynamic['connectors']['ampa_2state']['r2'] = False
+        self.is_dynamic['connectors']['ampa_2state']['g'] = False
+        self.is_dynamic['connectors']['ampa_2state']['E'] = False
+        self.is_dynamic['connectors']['ampa_2state']['L_max'] = False
+        self.is_dynamic['connectors']['ampa_2state']['V_p'] = False
+        self.is_dynamic['connectors']['ampa_2state']['K_p'] = False
+
+
+class SynAmpa6State_static_params(SynAmpa6State):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        self.is_dynamic['morphology']['position']['x'] = False
+        self.is_dynamic['morphology']['position']['y'] = False
+        self.is_dynamic['morphology']['position']['z'] = False
+        self.is_dynamic['morphology']['r'] = False
+        self.is_dynamic['morphology']['C'] = False
+        self.is_dynamic['morphology']['Na']['gNa'] = False
+        self.is_dynamic['morphology']['Na']['eNa'] = False
+        self.is_dynamic['morphology']['K']['gK'] = False
+        self.is_dynamic['morphology']['K']['eK'] = False
+        self.is_dynamic['morphology']['leak']['gLeak'] = False
+        self.is_dynamic['morphology']['leak']['eLeak'] = False
+
+        self.is_dynamic['connectors']['ampa_6state']['r1'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r2'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r3'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r4'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r5'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r6'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r7'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r8'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r9'] = False
+        self.is_dynamic['connectors']['ampa_6state']['r10'] = False
+        self.is_dynamic['connectors']['ampa_6state']['g'] = False
+        self.is_dynamic['connectors']['ampa_6state']['E'] = False
+        self.is_dynamic['connectors']['ampa_6state']['L_max'] = False
+        self.is_dynamic['connectors']['ampa_6state']['V_p'] = False
+        self.is_dynamic['connectors']['ampa_6state']['K_p'] = False
+
+
+class SynNmda2State_static_params(SynNmda2State):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        self.is_dynamic['morphology']['position']['x'] = False
+        self.is_dynamic['morphology']['position']['y'] = False
+        self.is_dynamic['morphology']['position']['z'] = False
+        self.is_dynamic['morphology']['r'] = False
+        self.is_dynamic['morphology']['C'] = False
+        self.is_dynamic['morphology']['Na']['gNa'] = False
+        self.is_dynamic['morphology']['Na']['eNa'] = False
+        self.is_dynamic['morphology']['K']['gK'] = False
+        self.is_dynamic['morphology']['K']['eK'] = False
+        self.is_dynamic['morphology']['leak']['gLeak'] = False
+        self.is_dynamic['morphology']['leak']['eLeak'] = False
+
+        self.is_dynamic['connectors']['nmda_2state']['r1'] = False
+        self.is_dynamic['connectors']['nmda_2state']['r2'] = False
+        self.is_dynamic['connectors']['nmda_2state']['Mg'] = False
+        self.is_dynamic['connectors']['nmda_2state']['g'] = False
+        self.is_dynamic['connectors']['nmda_2state']['E'] = False
+        self.is_dynamic['connectors']['nmda_2state']['L_max'] = False
+        self.is_dynamic['connectors']['nmda_2state']['V_p'] = False
+        self.is_dynamic['connectors']['nmda_2state']['K_p'] = False
+
+
+class SynGabaA2State_static_params(SynGabaA2State):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        self.is_dynamic['morphology']['position']['x'] = False
+        self.is_dynamic['morphology']['position']['y'] = False
+        self.is_dynamic['morphology']['position']['z'] = False
+        self.is_dynamic['morphology']['r'] = False
+        self.is_dynamic['morphology']['C'] = False
+        self.is_dynamic['morphology']['Na']['gNa'] = False
+        self.is_dynamic['morphology']['Na']['eNa'] = False
+        self.is_dynamic['morphology']['K']['gK'] = False
+        self.is_dynamic['morphology']['K']['eK'] = False
+        self.is_dynamic['morphology']['leak']['gLeak'] = False
+        self.is_dynamic['morphology']['leak']['eLeak'] = False
+
+        self.is_dynamic['connectors']['gaba_a_2state']['r1'] = False
+        self.is_dynamic['connectors']['gaba_a_2state']['r2'] = False
+        self.is_dynamic['connectors']['gaba_a_2state']['g'] = False
+        self.is_dynamic['connectors']['gaba_a_2state']['E'] = False
+        self.is_dynamic['connectors']['gaba_a_2state']['L_max'] = False
+        self.is_dynamic['connectors']['gaba_a_2state']['V_p'] = False
+        self.is_dynamic['connectors']['gaba_a_2state']['K_p'] = False
+
+
+class SynGabaBSyn_static_params(SynGabaBSyn):
+    def __init__(self, root_ctx, default_r=10, stimulus=None):
+        super().__init__(root_ctx, default_r, stimulus)
+        self.is_dynamic['morphology']['position']['x'] = False
+        self.is_dynamic['morphology']['position']['y'] = False
+        self.is_dynamic['morphology']['position']['z'] = False
+        self.is_dynamic['morphology']['r'] = False
+        self.is_dynamic['morphology']['C'] = False
+        self.is_dynamic['morphology']['Na']['gNa'] = False
+        self.is_dynamic['morphology']['Na']['eNa'] = False
+        self.is_dynamic['morphology']['K']['gK'] = False
+        self.is_dynamic['morphology']['K']['eK'] = False
+        self.is_dynamic['morphology']['leak']['gLeak'] = False
+        self.is_dynamic['morphology']['leak']['eLeak'] = False
+
+        self.is_dynamic['connectors']['gaba_b']['r1'] = False
+        self.is_dynamic['connectors']['gaba_b']['r2'] = False
+        self.is_dynamic['connectors']['gaba_b']['n'] = False
+        self.is_dynamic['connectors']['gaba_b']['Kd'] = False
+        self.is_dynamic['connectors']['gaba_b']['g'] = False
+        self.is_dynamic['connectors']['gaba_b']['E'] = False
+        self.is_dynamic['connectors']['gaba_b']['L_max'] = False
+        self.is_dynamic['connectors']['gaba_b']['V_p'] = False
+        self.is_dynamic['connectors']['gaba_b']['K_p'] = False
+
+
+def test_ampa_2state_simulation_pipeline(generated_dir):
+    npz_path = generated_dir / "test_preprocess_output.jconn"
+    img_path = generated_dir / "ampa_2state_sim_result.png"
+    root_ctx = load_context(str(npz_path))
+    def iclamp(state, ds_dt, t): return 70 * (t > 20)
+    mapping = root_ctx['root']['mapping']['H']
+    stimula = get_stim_pipeline_from_original_ids(mapping, ((['10675427', '11281421'], iclamp),))
+    foo = SynAmpa2State_static_params(root_ctx, stimulus=stimula)
+    sim = DefaultSim(foo)
+    sol = sim.solve(0, 50, num=100)
+    assert jnp.all(jnp.isfinite(sol.ys['V']))
+    assert 'ampa_2state' in sol.ys['connectors']
+
+    plt.figure()
+    plt.plot(sol.ts, sol.ys['V'])
+    plt.title("AMPA 2-state Simulation")
+    plt.xlabel("Time")
+    plt.ylabel("Voltage (V)")
+    plt.savefig(str(img_path))
+    plt.clf()
+    assert img_path.exists()
+
+
+def test_ampa_6state_simulation_pipeline(generated_dir):
+    npz_path = generated_dir / "test_preprocess_output.jconn"
+    img_path = generated_dir / "ampa_6state_sim_result.png"
+    root_ctx = load_context(str(npz_path))
+    def iclamp(state, ds_dt, t): return 70 * (t > 20)
+    mapping = root_ctx['root']['mapping']['H']
+    stimula = get_stim_pipeline_from_original_ids(mapping, ((['10675427', '11281421'], iclamp),))
+    foo = SynAmpa6State_static_params(root_ctx, stimulus=stimula)
+    sim = DefaultSim(foo)
+    sol = sim.solve(0, 50, num=100)
+    assert jnp.all(jnp.isfinite(sol.ys['V']))
+    assert 'ampa_6state' in sol.ys['connectors']
+
+    plt.figure()
+    plt.plot(sol.ts, sol.ys['V'])
+    plt.title("AMPA 6-state Simulation")
+    plt.xlabel("Time")
+    plt.ylabel("Voltage (V)")
+    plt.savefig(str(img_path))
+    plt.clf()
+    assert img_path.exists()
+
+
+# def test_nmda_2state_simulation_pipeline(generated_dir):
+#     npz_path = generated_dir / "test_preprocess_output.jconn"
+#     img_path = generated_dir / "nmda_2state_sim_result.png"
+#     root_ctx = load_context(str(npz_path))
+#     def iclamp(state, ds_dt, t): return 70 * (t > 20)
+#     mapping = root_ctx['root']['mapping']['H']
+#     stimula = get_stim_pipeline_from_original_ids(mapping, ((['10675427', '11281421'], iclamp),))
+#     foo = SynNmda2State_static_params(root_ctx, stimulus=stimula)
+#     sim = DefaultSim(foo)
+#     sol = sim.solve(0, 50, num=100)
+#     assert jnp.all(jnp.isfinite(sol.ys['V']))
+#     assert 'nmda_2state' in sol.ys['connectors']
+
+#     plt.figure()
+#     plt.plot(sol.ts, sol.ys['V'])
+#     plt.title("NMDA 2-state Simulation")
+#     plt.xlabel("Time")
+#     plt.ylabel("Voltage (V)")
+#     plt.savefig(str(img_path))
+#     plt.clf()
+#     assert img_path.exists()
+
+
+def test_gaba_a_2state_simulation_pipeline(generated_dir):
+    npz_path = generated_dir / "test_preprocess_output.jconn"
+    img_path = generated_dir / "gaba_a_2state_sim_result.png"
+    root_ctx = load_context(str(npz_path))
+    def iclamp(state, ds_dt, t): return 70 * (t > 20)
+    mapping = root_ctx['root']['mapping']['H']
+    stimula = get_stim_pipeline_from_original_ids(mapping, ((['10675427', '11281421'], iclamp),))
+    foo = SynGabaA2State_static_params(root_ctx, stimulus=stimula)
+    sim = DefaultSim(foo)
+    sol = sim.solve(0, 50, num=100)
+    assert jnp.all(jnp.isfinite(sol.ys['V']))
+    assert 'gaba_a_2state' in sol.ys['connectors']
+
+    plt.figure()
+    plt.plot(sol.ts, sol.ys['V'])
+    plt.title("GABA_A 2-state Simulation")
+    plt.xlabel("Time")
+    plt.ylabel("Voltage (V)")
+    plt.savefig(str(img_path))
+    plt.clf()
+    assert img_path.exists()
+
+
+def test_gaba_b_simulation_pipeline(generated_dir):
+    npz_path = generated_dir / "test_preprocess_output.jconn"
+    img_path = generated_dir / "gaba_b_sim_result.png"
+    root_ctx = load_context(str(npz_path))
+    def iclamp(state, ds_dt, t): return 70 * (t > 20)
+    mapping = root_ctx['root']['mapping']['H']
+    stimula = get_stim_pipeline_from_original_ids(mapping, ((['10675427', '11281421'], iclamp),))
+    foo = SynGabaBSyn_static_params(root_ctx, stimulus=stimula)
+    sim = DefaultSim(foo)
+    sol = sim.solve(0, 50, num=100)
+    assert jnp.all(jnp.isfinite(sol.ys['V']))
+    assert 'gaba_b' in sol.ys['connectors']
+
+    plt.figure()
+    plt.plot(sol.ts, sol.ys['V'])
+    plt.title("GABA_B Simulation")
+    plt.xlabel("Time")
+    plt.ylabel("Voltage (V)")
+    plt.savefig(str(img_path))
+    plt.clf()
+    assert img_path.exists()
