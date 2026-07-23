@@ -271,7 +271,7 @@ def get_dummy_delay_synapse_pipeline(pre_syn_edges, post_syn_edges):
     return synapse_pipeline
 
 
-def __C(V_pre, s):
+def __L(V_pre, s):
     L_max = s['L_max']
     V_p = s['V_p']
     K_p = s['K_p']
@@ -279,14 +279,13 @@ def __C(V_pre, s):
         -(V_pre - V_p)/K_p
     ))
 
+
 # TODO using sum_i pi = 1, reduce dims to N - 1
-
-
 def get_kinetic_synapce_pipeline(
     Q: dict[str, Callable],
     g_syn,
     name,
-    pre_syn_edges, post_syn_edges
+    pre_syn_edges, post_syn_edges, __L = __L
 ):
     pre_cable_idx = jnp.array(
         pre_syn_edges[0, :], dtype=jnp.int32)  # те идут в синапс
@@ -320,14 +319,14 @@ def get_kinetic_synapce_pipeline(
 
         presynaptic_voltage = cable_voltage[pre_cable_idx]
         postsynaptic_voltage = cable_voltage[post_cable_idx]
-        C = __C(presynaptic_voltage, synapce_state)[syn_pre_idx]
+        L = __L(presynaptic_voltage, synapce_state)[syn_pre_idx] # concentration
 
         for k, r in Q.items():
             a, b = k.split('->')
             synapce_ds_dt['P'][b] = synapce_ds_dt['P'][b].at[syn_pre_idx].add(
-                + r(C, synapce_state)*synapce_state['P'][a][syn_pre_idx])
+                + r(L, synapce_state)*synapce_state['P'][a][syn_pre_idx])
             synapce_ds_dt['P'][a] = synapce_ds_dt['P'][a].at[syn_pre_idx].add(
-                - r(C, synapce_state)*synapce_state['P'][a][syn_pre_idx])
+                - r(L, synapce_state)*synapce_state['P'][a][syn_pre_idx])
 
         I = g_syn(synapce_state)[
             syn_post_idx]*(synapce_state['E'][syn_post_idx] - postsynaptic_voltage)
@@ -342,8 +341,8 @@ def get_kinetic_synapce_pipeline(
 
 def get_component2_syn(pre_syn_edges, post_syn_edges):
     Q = {
-        'C->O': lambda c, s: s['r1']*c,
-        'O->C': lambda c, s: s['r2']
+        'C->O': lambda L, s: s['r1']*L,
+        'O->C': lambda L, s: s['r2']
     }
     name = 'comp2'
     return get_kinetic_synapce_pipeline(Q, lambda s: s['g']*s['P']['O'], name, pre_syn_edges, post_syn_edges)
