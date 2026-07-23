@@ -79,17 +79,17 @@ PlaceHolderParams = {
             'D2': 0.0,
         }
     },
-    get_nmda_2state_syn: {
-        'r1': 72.0,
-        'r2': 6.6,
-        'Mg': 1.0,
-        'g': 1.0,
-        'E': 0.0,
-        'P_defaut': {
-            'C': 1.0,
-            'O': 0.0,
-        }
-    },
+    # get_nmda_2state_syn: {
+    #     'r1': 72.0,
+    #     'r2': 6.6,
+    #     'Mg': 1.0,
+    #     'g': 1.0,
+    #     'E': 0.0,
+    #     'P_defaut': {
+    #         'C': 1.0,
+    #         'O': 0.0,
+    #     }
+    # },
     get_gaba_a_2state_syn: {
         'r1': 530.0,
         'r2': 180.0,
